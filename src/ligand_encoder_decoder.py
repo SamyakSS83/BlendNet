@@ -10,7 +10,7 @@ The module leverages the existing BlendNet architecture:
 - GNNDecoder for molecular graph reconstruction
 - RDKit for SMILES generation
 
-Author: Samyak
+Author: BlendNet Team
 """
 
 import torch
@@ -22,14 +22,163 @@ from rdkit import Chem
 from rdkit.Chem import MolToSmiles, MolFromSmiles
 import warnings
 
-# Import BlendNet modules
-from modules.compound_modules.pna import PNA
-from modules.compound_modules.models import VectorQuantizer, GNNDecoder, AtomEncoder, BondEncoder
-from feature_generation.compound.Get_Mol_features import get_mol_features, allowable_features
+# Import BlendNet modules - with error handling for compatibility
+try:
+    import sys
+    import os
+    
+    # Add the parent directory to path to find modules
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    
+    from modules.compound_modules.pna import PNA
+    from modules.compound_modules.models import VectorQuantizer, GNNDecoder, AtomEncoder, BondEncoder
+    
+    # Try to import feature generation utilities
+    try:
+        from feature_generation.compound.Get_Mol_features import get_mol_features, allowable_features
+    except ImportError:
+        # Fallback implementation if module not found
+        print("Warning: Could not import Get_Mol_features, using fallback implementation")
+        allowable_features = None
+        
+        def get_mol_features(mol):
+            """Simplified fallback implementation"""
+            from rdkit import Chem
+            
+            atom_features = []
+            for atom in mol.GetAtoms():
+                features = [
+                    atom.GetAtomicNum() - 1,  # Atomic number (0-indexed)
+                    int(atom.GetChiralTag()),  # Chirality
+                    atom.GetTotalDegree(),  # Degree
+                    atom.GetFormalCharge() + 5,  # Formal charge (shifted to be positive)
+                    atom.GetTotalNumHs(),  # Number of hydrogens
+                    atom.GetNumRadicalElectrons(),  # Radical electrons
+                    int(atom.GetHybridization()) - 1,  # Hybridization
+                    int(atom.GetIsAromatic()),  # Is aromatic
+                    int(atom.IsInRing())  # Is in ring
+                ]
+                atom_features.append(features)
+            
+            edges_list = []
+            edge_features = []
+            for bond in mol.GetBonds():
+                i = bond.GetBeginAtomIdx()
+                j = bond.GetEndAtomIdx()
+                bond_type = int(bond.GetBondType()) - 1
+                edge_feature = [bond_type, 0, 0, 0]  # Simplified edge features
+                
+                edges_list.append([i, j])
+                edge_features.append(edge_feature)
+                edges_list.append([j, i])
+                edge_features.append(edge_feature)
+            
+            edge_index = torch.tensor(edges_list, dtype=torch.long).T if edges_list else torch.zeros((2, 0), dtype=torch.long)
+            
+            return atom_features, edge_index, edge_features, len(edges_list)
+    
+    # Import PyTorch Geometric utilities with compatibility checks
+    try:
+        from torch_geometric.data import Data, Batch
+        from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_pool
+    except ImportError as e:
+        print(f"Warning: PyTorch Geometric import failed: {e}")
+        # Create fallback classes
+        class Data:
+            def __init__(self, x=None, edge_index=None, edge_attr=None, batch=None):
+                self.x = x
+                self.edge_index = edge_index
+                self.edge_attr = edge_attr
+                self.batch = batch if batch is not None else torch.zeros(x.size(0), dtype=torch.long)
+            
+            def to(self, device):
+                self.x = self.x.to(device) if self.x is not None else None
+                self.edge_index = self.edge_index.to(device) if self.edge_index is not None else None
+                self.edge_attr = self.edge_attr.to(device) if self.edge_attr is not None else None
+                self.batch = self.batch.to(device) if self.batch is not None else None
+                return self
+        
+        class Batch(Data):
+            @classmethod
+            def from_data_list(cls, data_list):
+                if not data_list:
+                    return cls()
+                
+                # Simple batching implementation
+                x_list = [data.x for data in data_list if data.x is not None]
+                edge_index_list = []
+                edge_attr_list = []
+                batch_list = []
+                
+                node_offset = 0
+                for i, data in enumerate(data_list):
+                    if data.x is not None:
+                        batch_list.extend([i] * data.x.size(0))
+                        if data.edge_index is not None:
+                            edge_index_list.append(data.edge_index + node_offset)
+                            if data.edge_attr is not None:
+                                edge_attr_list.append(data.edge_attr)
+                        node_offset += data.x.size(0)
+                
+                x = torch.cat(x_list, dim=0) if x_list else None
+                edge_index = torch.cat(edge_index_list, dim=1) if edge_index_list else None
+                edge_attr = torch.cat(edge_attr_list, dim=0) if edge_attr_list else None
+                batch = torch.tensor(batch_list, dtype=torch.long) if batch_list else None
+                
+                return cls(x=x, edge_index=edge_index, edge_attr=edge_attr, batch=batch)
+        
+        def global_mean_pool(x, batch, size=None):
+            """Fallback implementation for global mean pooling"""
+            if batch is None:
+                return x.mean(dim=0, keepdim=True)
+            
+            batch_size = batch.max().item() + 1
+            output = torch.zeros(batch_size, x.size(1), device=x.device, dtype=x.dtype)
+            
+            for i in range(batch_size):
+                mask = batch == i
+                if mask.any():
+                    output[i] = x[mask].mean(dim=0)
+            
+            return output
+        
+        def global_add_pool(x, batch, size=None):
+            """Fallback implementation for global sum pooling"""
+            if batch is None:
+                return x.sum(dim=0, keepdim=True)
+            
+            batch_size = batch.max().item() + 1
+            output = torch.zeros(batch_size, x.size(1), device=x.device, dtype=x.dtype)
+            
+            for i in range(batch_size):
+                mask = batch == i
+                if mask.any():
+                    output[i] = x[mask].sum(dim=0)
+            
+            return output
+        
+        def global_max_pool(x, batch, size=None):
+            """Fallback implementation for global max pooling"""
+            if batch is None:
+                return x.max(dim=0, keepdim=True)[0]
+            
+            batch_size = batch.max().item() + 1
+            output = torch.zeros(batch_size, x.size(1), device=x.device, dtype=x.dtype)
+            
+            for i in range(batch_size):
+                mask = batch == i
+                if mask.any():
+                    output[i] = x[mask].max(dim=0)[0]
+            
+            return output
 
-# Import PyTorch Geometric utilities
-from torch_geometric.data import Data, Batch
-from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_pool
+except ImportError as e:
+    print(f"Critical import error: {e}")
+    print("Please ensure you're in the correct environment and all dependencies are installed.")
+    raise
 
 
 class LigandEncoder(nn.Module):
