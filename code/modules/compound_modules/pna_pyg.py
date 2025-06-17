@@ -5,7 +5,7 @@ from typing import Dict, List, Union, Callable
 
 from torch import nn
 import torch.nn.functional as F
-from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool
+from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, global_min_pool
 from torch_geometric.nn import MessagePassing
 
 from .base_layers import MLP
@@ -55,12 +55,12 @@ def scale_identity(h, D=None, avg_d=None):
 
 def scale_amplification(h, D, avg_d):
     # log(D + 1) / d * h     where d is the average of the ``log(D + 1)`` in the training set
-    return h * (np.log(D + 1) / avg_d["log"])
+    return h * (torch.log(D + 1) / avg_d["log"])
 
 
 def scale_attenuation(h, D, avg_d):
     # (log(D + 1))^-1 / d * X     where d is the average of the ``log(D + 1))^-1`` in the training set
-    return h * (avg_d["log"] / np.log(D + 1))
+    return h * (avg_d["log"] / torch.log(D + 1))
 
 
 PNA_AGGREGATORS = {
@@ -143,6 +143,8 @@ class PNA(nn.Module):
                 readout = global_add_pool(node_features, data.batch)
             elif aggr == 'max':
                 readout = global_max_pool(node_features, data.batch)[0]
+            elif aggr == 'min':
+                readout = global_min_pool(node_features, data.batch)[0]
             else:
                 raise ValueError(f"Unsupported aggregator: {aggr}")
             readouts_to_cat.append(readout)

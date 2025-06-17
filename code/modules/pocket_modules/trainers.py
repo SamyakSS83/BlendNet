@@ -92,7 +92,7 @@ class Pseq2SitesTrainer():
         return loss
         
     def calculate_weights(self, labels, masks):
-        labels_inverse = torch.abs(labels - torch.ones(labels.size()).cuda())
+        labels_inverse = torch.abs(labels - torch.ones(labels.size(), device=labels.device))
         
         negative_labels = labels_inverse * masks
         

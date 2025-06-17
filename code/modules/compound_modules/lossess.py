@@ -1435,9 +1435,8 @@ def get_expectation(masked_d_prime, positive=True):
         masked_d_prime: Tensor of shape [n_graphs, n_graphs] for global_global,
                         tensor of shape [n_nodes, n_graphs] for local_global.
         positive (bool): Set True if the d_prime is masked for positive pairs,
-                        set False for negative pairs.
-    '''
-    log_2 = np.log(2.)
+                        set False for negative pairs.    '''
+    log_2 = torch.log(torch.tensor(2.0, device=masked_d_prime.device))
     if positive:
         score = log_2 - F.softplus(-masked_d_prime)
     else:

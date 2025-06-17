@@ -111,12 +111,14 @@ def pad_data(samples):
     for idx, n_node in enumerate(num_nodes):
         compound_mask[idx, :n_node] = 1
 
-    resi_feat = torch.tensor(resi_feat, dtype = torch.float32).cuda()
-    pocket_mask = torch.tensor(pocket_mask, dtype = torch.long).cuda()
-    seq_lengths = torch.tensor(seq_lengths, dtype = torch.long).cuda()
+    # Convert to tensors and move to GPU if available
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    resi_feat = torch.tensor(resi_feat, dtype = torch.float32).to(device)
+    pocket_mask = torch.tensor(pocket_mask, dtype = torch.long).to(device)
+    seq_lengths = torch.tensor(seq_lengths, dtype = torch.long).to(device)
 
-    compound_mask = torch.tensor(compound_mask, dtype = torch.long).cuda()
-    labels = torch.tensor(labels, dtype = torch.float32).cuda()
+    compound_mask = torch.tensor(compound_mask, dtype = torch.long).to(device)
+    labels = torch.tensor(labels, dtype = torch.float32).to(device)
     
-    return (resi_feat, seq_lengths), Batch.from_data_list(compound_graphs).to("cuda:0"), labels, pocket_mask, compound_mask    
+    return (resi_feat, seq_lengths), Batch.from_data_list(compound_graphs).to(device), labels, pocket_mask, compound_mask
         

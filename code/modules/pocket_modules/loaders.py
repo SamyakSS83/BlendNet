@@ -32,10 +32,12 @@ class PocketDataset(Dataset):
         protein_feat[:seqlength, :] = np.sum(pfeat)
         position_ids = [i for i in range(self.maxL)]
         
-        prot_feat = torch.tensor(prot_feat, dtype = torch.float32).cuda()
-        protein_feat = torch.tensor(protein_feat, dtype = torch.float32).cuda()
-        input_mask = torch.tensor(input_mask, dtype = torch.long).cuda()
-        position_ids = torch.tensor(position_ids, dtype = torch.long).cuda()
+        # Convert to tensors and move to GPU if available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        prot_feat = torch.tensor(prot_feat, dtype = torch.float32).to(device)
+        protein_feat = torch.tensor(protein_feat, dtype = torch.float32).to(device)
+        input_mask = torch.tensor(input_mask, dtype = torch.long).to(device)
+        position_ids = torch.tensor(position_ids, dtype = torch.long).to(device)
 
         bs = self.Labels[idx]
 
@@ -46,7 +48,7 @@ class PocketDataset(Dataset):
         one_hot_targets = np.eye(self.maxL)[targets]
         one_hot_targets = np.sum(one_hot_targets, axis = 0) 
         
-        one_hot_targets = torch.tensor(one_hot_targets, dtype = torch.float32).cuda()
+        one_hot_targets = torch.tensor(one_hot_targets, dtype = torch.float32).to(device)
         
         return prot_feat, protein_feat, input_mask, position_ids, one_hot_targets
         
@@ -79,9 +81,11 @@ class PocketTestDataset(Dataset):
         protein_feat[:seqlength, :] = np.sum(pfeat)
         position_ids = [i for i in range(self.maxL)]
         
-        prot_feat = torch.tensor(prot_feat, dtype = torch.float32).cuda()
-        protein_feat = torch.tensor(protein_feat, dtype = torch.float32).cuda()
-        input_mask = torch.tensor(input_mask, dtype = torch.long).cuda()
-        position_ids = torch.tensor(position_ids, dtype = torch.long).cuda()
+        # Convert to tensors and move to GPU if available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        prot_feat = torch.tensor(prot_feat, dtype = torch.float32).to(device)
+        protein_feat = torch.tensor(protein_feat, dtype = torch.float32).to(device)
+        input_mask = torch.tensor(input_mask, dtype = torch.long).to(device)
+        position_ids = torch.tensor(position_ids, dtype = torch.long).to(device)
 
         return prot_feat, protein_feat, input_mask, position_ids

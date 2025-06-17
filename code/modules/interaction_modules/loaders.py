@@ -136,19 +136,20 @@ def pad_data(samples):
         
         extract_isarr = arr[:,pocket_ind[idx]]
         extract_interaction_labels[idx, :extract_isarr.shape[0], :extract_isarr.shape[1]] = extract_isarr
-      
-    pairwise_mask = np.matmul(np.expand_dims(compound_mask, axis = 2), np.expand_dims(protein_mask, axis = 1))
+        pairwise_mask = np.matmul(np.expand_dims(compound_mask, axis = 2), np.expand_dims(protein_mask, axis = 1))
 
-    resi_feat = torch.tensor(resi_feat, dtype = torch.float32).cuda()
-    pocket_mask = torch.tensor(pocket_mask, dtype = torch.long).cuda()
-    pocket_ids = torch.tensor(pocket_ids, dtype = torch.long).cuda()
-    seq_lengths = torch.tensor(seq_lengths, dtype = torch.long).cuda()
-    pairwise_mask = torch.tensor(pairwise_mask, dtype = torch.long).cuda()
+    # Convert to tensors and move to GPU
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    resi_feat = torch.tensor(resi_feat, dtype = torch.float32).to(device)
+    pocket_mask = torch.tensor(pocket_mask, dtype = torch.long).to(device)
+    pocket_ids = torch.tensor(pocket_ids, dtype = torch.long).to(device)
+    seq_lengths = torch.tensor(seq_lengths, dtype = torch.long).to(device)
+    pairwise_mask = torch.tensor(pairwise_mask, dtype = torch.long).to(device)
     
-    compound_mask = torch.tensor(compound_mask, dtype = torch.long).cuda()
-    extract_interaction_labels = torch.tensor(extract_interaction_labels, dtype = torch.float32).cuda()
-    interaction_labels = torch.tensor(interaction_labels, dtype = torch.float32).cuda()
-    labels = torch.tensor(labels, dtype = torch.float32).cuda()
+    compound_mask = torch.tensor(compound_mask, dtype = torch.long).to(device)
+    extract_interaction_labels = torch.tensor(extract_interaction_labels, dtype = torch.float32).to(device)
+    interaction_labels = torch.tensor(interaction_labels, dtype = torch.float32).to(device)
+    labels = torch.tensor(labels, dtype = torch.float32).to(device)
     
-    return (resi_feat, pocket_ids, seq_lengths), Batch.from_data_list(compound_graphs).to("cuda:0"), labels, extract_interaction_labels, interaction_labels, pairwise_mask, pocket_mask, compound_mask    
+    return (resi_feat, pocket_ids, seq_lengths), Batch.from_data_list(compound_graphs).to(device), labels, extract_interaction_labels, interaction_labels, pairwise_mask, pocket_mask, compound_mask
         

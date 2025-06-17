@@ -64,7 +64,7 @@ def main():
         ################################
         # Define Binding Affinity model
         ################################
-        Model = BlendNetT(config, device).cuda()
+        Model = BlendNetT(config, device).to(device)
         
         ###################
         # Define optimizer 

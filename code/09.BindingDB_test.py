@@ -63,7 +63,7 @@ def main():
         # Define model and load weights
         Model = BlendNetS(config["Path"]["Ki_interaction_site_predictor"], config, device).cuda()
 
-        checkpoint = torch.load(f"{config['Path']['Ki_save_path']}/random_split/CV{idx}/BlendNet_S.pth")
+        checkpoint = torch.load(f"{config['Path']['Ki_save_path']}/random_split/CV{idx}/BlendNet_S.pth", weights_only=True)
         Model.load_state_dict(checkpoint)
         
         for parameter in Model.parameters():

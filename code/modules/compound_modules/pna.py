@@ -5,7 +5,7 @@ from typing import Dict, List, Union, Callable
 
 from torch import nn
 import torch.nn.functional as F
-from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool
+from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, global_min_pool
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import scatter
 
@@ -134,8 +134,7 @@ class PNA(nn.Module):
                 - batch: batch assignment [num_nodes]
         """
         node_features = self.node_gnn(data)
-        
-        # Apply readout aggregation functions
+          # Apply readout aggregation functions
         readouts_to_cat = []
         for aggr in self.readout_aggregators:
             if aggr == 'mean':
@@ -144,6 +143,8 @@ class PNA(nn.Module):
                 readout = global_add_pool(node_features, data.batch)
             elif aggr == 'max':
                 readout = global_max_pool(node_features, data.batch)[0]
+            elif aggr == 'min':
+                readout = global_min_pool(node_features, data.batch)[0]
             else:
                 raise ValueError(f"Unsupported aggregator: {aggr}")
             readouts_to_cat.append(readout)

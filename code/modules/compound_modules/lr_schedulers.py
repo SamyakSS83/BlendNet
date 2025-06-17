@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 from torch.optim.lr_scheduler import *
 
@@ -43,9 +44,8 @@ class WarmUpWrapper:
                     else:
                         if self.interpolation == 'linear':
                             p['lr'] = self.start_lrs[i] * (interpolation_value / self.warmup_steps[warmup_phase])
-                        elif self.interpolation == 'cosine':
-                            p['lr'] = self.start_lrs[i] * (
-                                    (-np.cos((np.pi) * (interpolation_value / self.warmup_steps[warmup_phase])) + 1) * 0.5)
+                        elif self.interpolation == 'cosine':                            p['lr'] = self.start_lrs[i] * (
+                                    (-torch.cos(torch.tensor(torch.pi) * (interpolation_value / self.warmup_steps[warmup_phase])) + 1) * 0.5).item()
                         else:
                             raise ValueError('interpolation not implemented:', self.interpolation)
 

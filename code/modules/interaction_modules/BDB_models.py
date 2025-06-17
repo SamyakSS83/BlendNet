@@ -148,7 +148,7 @@ class BlendNetS(nn.Module):
         return outputs.squeeze(1), pairwise_maps, pairwise_masks, final_compound_features, final_pocket_features
         
     def from_pretrained_model(self, model, model_path):    
-        checkpoint = torch.load(model_path)
+        checkpoint = torch.load(model_path, weights_only=True)
         model.load_state_dict(checkpoint)
         
         for parameter in model.parameters():

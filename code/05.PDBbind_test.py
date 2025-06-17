@@ -157,8 +157,8 @@ def main():
         testloader = DataLoader(Subset(TotalDataset, test_index), batch_size=config['Train']['batch_size'], shuffle=False, collate_fn=pad_data)
         
         # Define model and load weights
-        Model = BlendNetT(config, device).cuda()
-        checkpoint = torch.load(f"{config['Path']['save_path']}/CV{idx}/BlendNet_T.pth")
+        Model = BlendNetT(config, device).to(device)
+        checkpoint = torch.load(f"{config['Path']['save_path']}/CV{idx}/BlendNet_T.pth", weights_only=True)
         Model.load_state_dict(checkpoint)
         
         for parameter in Model.parameters():
