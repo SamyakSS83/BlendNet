@@ -16,7 +16,10 @@ EPS = 1e-5
 
 def global_min_pool(x, batch, size=None):
     """Custom implementation of global min pooling using scatter."""
-    return scatter(x, batch, dim=0, dim_size=size, reduce='min'), None
+    # Use scatter to compute min pooling
+    result = scatter(x, batch, dim=0, dim_size=size, reduce='min')
+    # Return as tuple to match global_max_pool API
+    return result, None
 
 def aggregate_mean(h, **kwargs):
     return torch.mean(h, dim=-2)
@@ -138,7 +141,8 @@ class PNA(nn.Module):
                 - batch: batch assignment [num_nodes]
         """
         node_features = self.node_gnn(data)
-          # Apply readout aggregation functions
+        
+        # Apply readout aggregation functions
         readouts_to_cat = []
         for aggr in self.readout_aggregators:
             if aggr == 'mean':
@@ -146,11 +150,21 @@ class PNA(nn.Module):
             elif aggr == 'sum':
                 readout = global_add_pool(node_features, data.batch)
             elif aggr == 'max':
-                readout = global_max_pool(node_features, data.batch)[0]
+                readout = global_max_pool(node_features, data.batch)
+                if isinstance(readout, tuple):
+                    readout = readout[0]  # Take values, not indices
             elif aggr == 'min':
-                readout = global_min_pool(node_features, data.batch)[0]
+                readout = global_min_pool(node_features, data.batch)
+                if isinstance(readout, tuple):
+                    readout = readout[0]  # Take values, not indices
             else:
                 raise ValueError(f"Unsupported aggregator: {aggr}")
+            
+            # Ensure readout is 2D (batch_size, features)
+            if readout.dim() == 1:
+                readout = readout.unsqueeze(0)
+            elif readout.dim() == 0:
+                readout = readout.unsqueeze(0).unsqueeze(0)
             readouts_to_cat.append(readout)
         
         readout = torch.cat(readouts_to_cat, dim=-1)
