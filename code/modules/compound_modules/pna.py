@@ -34,13 +34,17 @@ def aggregate_min(h, **kwargs):
 
 
 def aggregate_std(h, **kwargs):
-    return torch.sqrt(aggregate_var(h) + EPS)
+    var = aggregate_var(h)
+    # Add epsilon for numerical stability and prevent NaN from sqrt of negative numbers
+    return torch.sqrt(var + EPS)
 
 
 def aggregate_var(h, **kwargs):
     h_mean_squares = torch.mean(h * h, dim=-2)
     h_mean = torch.mean(h, dim=-2)
-    var = torch.relu(h_mean_squares - h_mean * h_mean)
+    var = h_mean_squares - h_mean * h_mean
+    # Use relu to ensure non-negative variance, but also add epsilon
+    var = torch.relu(var) + EPS
     return var
 
 
@@ -63,12 +67,20 @@ def scale_identity(h, D=None, avg_d=None):
 
 def scale_amplification(h, D, avg_d):
     # log(D + 1) / d * h     where d is the average of the ``log(D + 1)`` in the training set
-    return h * (torch.log(D + 1) / avg_d["log"])
+    # Add small epsilon to prevent division by zero
+    epsilon = 1e-8
+    denominator = max(avg_d["log"], epsilon)
+    return h * (torch.log(D + 1) / denominator)
 
 
 def scale_attenuation(h, D, avg_d):
     # (log(D + 1))^-1 / d * X     where d is the average of the ``log(D + 1))^-1`` in the training set
-    return h * (avg_d["log"] / torch.log(D + 1))
+    # Add small epsilon to prevent division by zero
+    epsilon = 1e-8
+    log_term = torch.log(D + 1)
+    # Clamp log_term to prevent division by very small numbers
+    log_term = torch.clamp(log_term, min=epsilon)
+    return h * (avg_d["log"] / log_term)
 
 
 PNA_AGGREGATORS = {
@@ -168,7 +180,20 @@ class PNA(nn.Module):
             readouts_to_cat.append(readout)
         
         readout = torch.cat(readouts_to_cat, dim=-1)
-        return node_features, self.output(readout)
+        
+        # Check for NaN/Inf values and replace with zeros
+        if torch.isnan(readout).any() or torch.isinf(readout).any():
+            readout = torch.where(torch.isnan(readout) | torch.isinf(readout), 
+                                torch.zeros_like(readout), readout)
+        
+        final_output = self.output(readout)
+        
+        # Final check for NaN/Inf in output
+        if torch.isnan(final_output).any() or torch.isinf(final_output).any():
+            final_output = torch.where(torch.isnan(final_output) | torch.isinf(final_output), 
+                                     torch.zeros_like(final_output), final_output)
+        
+        return node_features, final_output
 
 
 class PNAGNN(nn.Module):

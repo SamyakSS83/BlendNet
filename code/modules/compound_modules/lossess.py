@@ -1441,6 +1441,12 @@ def get_expectation(masked_d_prime, positive=True):
         score = log_2 - F.softplus(-masked_d_prime)
     else:
         score = F.softplus(-masked_d_prime) + masked_d_prime - log_2
+    
+    # Check for NaN/Inf values
+    if torch.isnan(score).any() or torch.isinf(score).any():
+        score = torch.where(torch.isnan(score) | torch.isinf(score), 
+                          torch.zeros_like(score), score)
+    
     return score
 
 

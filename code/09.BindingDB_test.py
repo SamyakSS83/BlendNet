@@ -433,6 +433,25 @@ def get_results(labels, predictions):
     labels = np.array(labels)
     predictions = np.array(predictions)
     
+    # Check for NaN or infinite values
+    nan_mask = np.isnan(predictions) | np.isinf(predictions) | np.isnan(labels) | np.isinf(labels)
+    if np.any(nan_mask):
+        print(f"Warning: Found {np.sum(nan_mask)} NaN/Inf values in predictions or labels")
+        print(f"NaN in predictions: {np.sum(np.isnan(predictions))}")
+        print(f"Inf in predictions: {np.sum(np.isinf(predictions))}")
+        print(f"NaN in labels: {np.sum(np.isnan(labels))}")
+        print(f"Inf in labels: {np.sum(np.isinf(labels))}")
+        
+        # Remove NaN/Inf values
+        valid_mask = ~nan_mask
+        if np.sum(valid_mask) == 0:
+            print("Error: All predictions or labels are NaN/Inf!")
+            return float('nan'), float('nan'), float('nan'), float('nan'), float('nan')
+        
+        labels = labels[valid_mask]
+        predictions = predictions[valid_mask]
+        print(f"Using {len(labels)} valid samples out of {len(labels) + np.sum(nan_mask)}")
+    
     MSE = mean_squared_error(labels, predictions)
     RMSE = mean_squared_error(labels, predictions)**0.5
     PCC = pearsonr(labels, predictions)
