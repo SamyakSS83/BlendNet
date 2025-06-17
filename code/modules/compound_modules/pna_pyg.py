@@ -5,13 +5,18 @@ from typing import Dict, List, Union, Callable
 
 from torch import nn
 import torch.nn.functional as F
-from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, global_min_pool
+from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool
 from torch_geometric.nn import MessagePassing
+from torch_geometric.utils import scatter
 
 from .base_layers import MLP
 from .models import AtomEncoder, BondEncoder
 
 EPS = 1e-5
+
+def global_min_pool(x, batch, size=None):
+    """Custom implementation of global min pooling using scatter."""
+    return scatter(x, batch, dim=0, dim_size=size, reduce='min'), None
 
 def aggregate_mean(h, **kwargs):
     return torch.mean(h, dim=-2)
@@ -235,7 +240,6 @@ class PNALayer(MessagePassing):
         edge_messages = self.pretrans(z2)
         
         # Manual aggregation using scatter operations
-        from torch_geometric.utils import scatter
         
         # Get node degrees for each node
         node_degrees = scatter(torch.ones_like(col, dtype=torch.float), col, dim=0, dim_size=x.size(0), reduce='sum')
