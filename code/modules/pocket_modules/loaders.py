@@ -29,7 +29,11 @@ class PocketDataset(Dataset):
         prot_feat[:seqlength, :] = pfeat
         input_mask += [0] * (self.maxL - seqlength)
 
-        protein_feat[:seqlength, :] = np.sum(pfeat)
+        # Sum across the sequence dimension, creating a global context vector
+        # Then broadcast this context vector to each position in the sequence
+        protein_feat_sum = np.sum(pfeat, axis=0)  # Shape (inputD,)
+        for i in range(seqlength):
+            protein_feat[i, :] = protein_feat_sum
         position_ids = [i for i in range(self.maxL)]
         
         # Convert to tensors and move to GPU if available
@@ -78,7 +82,11 @@ class PocketTestDataset(Dataset):
         prot_feat[:seqlength, :] = pfeat
         input_mask += [0] * (self.maxL - seqlength)
 
-        protein_feat[:seqlength, :] = np.sum(pfeat)
+        # Sum across the sequence dimension, creating a global context vector
+        # Then broadcast this context vector to each position in the sequence
+        protein_feat_sum = np.sum(pfeat, axis=0)  # Shape (inputD,)
+        for i in range(seqlength):
+            protein_feat[i, :] = protein_feat_sum
         position_ids = [i for i in range(self.maxL)]
         
         # Convert to tensors and move to GPU if available
