@@ -26,7 +26,7 @@ def load_example_data():
     # Try to load real data from the project
     try:
         # Load protein features (ProtBERT embeddings)
-        feature_path = "../input_data/PDB/BA/CASF2016_protein_features.pkl"
+        feature_path = "input_data/PDB/BA/CASF2016_protein_features.pkl"
         if os.path.exists(feature_path):
             with open(feature_path, 'rb') as f:
                 protein_features = pickle.load(f)
@@ -37,7 +37,7 @@ def load_example_data():
             
         # Load protein sequences
         import pandas as pd
-        seq_path = "../input_data/PDB/BA/CASF2016_BA_data.tsv"
+        seq_path = "input_data/PDB/BA/CASF2016_BA_data.tsv"
         if os.path.exists(seq_path):
             df = pd.read_csv(seq_path, sep='\t')
             protein_sequences = dict(zip(df.iloc[:, 1].values, df.iloc[:, 4].values))
@@ -177,7 +177,7 @@ def example_advanced_usage():
         print(summary.to_string(index=False))
         
         # Save embeddings
-        output_dir = "../results/embeddings/"
+        output_dir = "results/embeddings/"
         os.makedirs(output_dir, exist_ok=True)
         
         embedder.save_embeddings(
