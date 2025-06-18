@@ -214,17 +214,25 @@ class Pseq2SitesEmbeddings:
                         break
                         
                     pid = valid_ids[protein_idx]
-                    seq_len = len(valid_seqs[protein_idx])
+                    # Debug feature vs sequence length
+                    pfeat_len = protein_features[pid].shape[0]
+                    seq_len_seq = len(valid_seqs[protein_idx])
+                    if pfeat_len != seq_len_seq:
+                        print(f"⚠ Debug: Protein {pid} sequence length ({seq_len_seq}) != feature length ({pfeat_len}), using min for cropping")
+                    # Use the minimum length to avoid broadcasting errors
+                    max_len_cfg = self.config['Architecture']['max_lengths']
+                    seq_len = min(pfeat_len, seq_len_seq, max_len_cfg)
                     
                     # Extract embeddings for this protein
                     protein_results = {}
                     
-                    # Core embeddings (truncated to actual sequence length)
+                    # Core embeddings (truncated to effective sequence length)
                     protein_results['sequence_embeddings'] = feats[i, :seq_len, :].cpu().numpy()
                     protein_results['protein_embeddings'] = prot_feats[i, :seq_len, :].cpu().numpy()
                     
                     # Binding site predictions
                     if return_predictions:
+                        # Truncate predictions to effective sequence length
                         raw_predictions = outputs[i, :seq_len].cpu().numpy()
                         binding_probabilities = torch.sigmoid(outputs[i, :seq_len]).cpu().numpy()
                         
@@ -234,11 +242,12 @@ class Pseq2SitesEmbeddings:
                     
                     # Attention weights
                     if return_attention and att_probs is not None:
+                        # Truncate attention weights to effective sequence length
                         protein_results['attention_weights'] = att_probs[i, :, :seq_len, :seq_len].cpu().numpy()
                     
                     # Metadata
                     protein_results['sequence_length'] = seq_len
-                    protein_results['sequence'] = valid_seqs[protein_idx]
+                    protein_results['sequence'] = valid_seqs[protein_idx][:seq_len]
                     protein_results['attention_mask'] = prots_mask[i, :seq_len].cpu().numpy()
                     
                     results[pid] = protein_results
