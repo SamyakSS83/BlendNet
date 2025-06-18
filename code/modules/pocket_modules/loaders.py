@@ -70,15 +70,21 @@ class PocketTestDataset(Dataset):
         
         ### process data
         seqlength = len(pseq)
-        input_mask = [1] * seqlength
-        
+        featlen = pfeat.shape[0]
+        # Debug mismatch between sequence and feature lengths
+        if seqlength != featlen:
+            print(f"⚠ Debug (Loader): Protein {pid} sequence length ({seqlength}) != feature length ({featlen})")
+        # Effective length for this sample
+        actual_len = min(seqlength, featlen, self.maxL)
+        # Create masks and padded arrays
+        input_mask = [1] * actual_len + [0] * (self.maxL - actual_len)
         prot_feat = np.zeros((self.maxL, self.inputD))
         protein_feat = np.zeros((self.maxL, self.inputD))
-        
-        prot_feat[:seqlength, :] = pfeat
-        input_mask += [0] * (self.maxL - seqlength)
-
-        protein_feat[:seqlength, :] = np.sum(pfeat)
+        # Truncate or pad features
+        prot_feat[:actual_len, :] = pfeat[:actual_len]
+        # Aggregate features per residue (broadcast sum across features)
+        agg_feat = np.sum(pfeat[:actual_len], axis=0)
+        protein_feat[:actual_len, :] = agg_feat
         position_ids = [i for i in range(self.maxL)]
         
         # Convert to tensors and move to GPU if available
