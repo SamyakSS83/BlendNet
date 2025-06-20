@@ -384,9 +384,10 @@ def ligand_encoder(
 def ligand_decoder(
     encoded_vectors: torch.Tensor,
     output_format: str = "smiles",
-    template_graph: Optional[Data] = None,
+    template_graphs: Optional[List[Data]] = None,
     hidden_dim: int = 256,
-    device: Optional[str] = None
+    device: Optional[str] = None,
+    **kwargs
 ) -> Union[List[str], Dict[str, torch.Tensor]]:
     """
     High-level function to decode vector representations back to molecular representations.
@@ -394,7 +395,7 @@ def ligand_decoder(
     Args:
         encoded_vectors: Tensor of encoded vectors
         output_format: Output format ("smiles" or "features")
-        template_graph: Template graph structure for decoding
+        template_graphs: Template graph structure for decoding
         hidden_dim: Hidden dimension of the decoder
         device: Device to run on (auto-detected if None)
         
@@ -416,18 +417,23 @@ def ligand_decoder(
     
     with torch.no_grad():
         if output_format == "smiles":
-            return decoder.decode_to_smiles(encoded_vectors, template_graph)
+            # Decode smiles using list of template_graphs
+            return decoder.decode_to_smiles(encoded_vectors, template_graphs)
         elif output_format == "features":
             # Need a template graph for feature decoding
-            if template_graph is None:
-                raise ValueError("template_graph required for features output format")
+            if template_graphs is None or len(template_graphs) != encoded_vectors.size(0):
+                raise ValueError("template_graphs required for features output format")
             
-            return decoder(
-                encoded_vectors,
-                template_graph.edge_index,
-                template_graph.edge_attr,
-                template_graph.x.size(0)
-            )
+            results = []
+            for graph in template_graphs:
+                result = decoder(
+                    encoded_vectors,
+                    graph.edge_index,
+                    graph.edge_attr,
+                    graph.x.size(0)
+                )
+                results.append(result)
+            return results
         else:
             raise ValueError("output_format must be 'smiles' or 'features'")
 
