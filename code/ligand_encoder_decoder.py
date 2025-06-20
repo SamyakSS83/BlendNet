@@ -486,6 +486,16 @@ def test_encoder_decoder():
         "c1ccccc1",  # Benzene
         "CC(C)O",  # Isopropanol
     ]
+    # Build template graphs from SMILES
+    template_graphs = []
+    for smi in test_smiles:
+        mol = MolFromSmiles(smi)
+        atom_feats, edge_idx, edge_feats, _ = get_mol_features(mol)
+        num_atoms = len(atom_feats)
+        # Create dummy x for Data
+        x = torch.zeros((num_atoms, 1), dtype=torch.float)
+        data = Data(x=x, edge_index=edge_idx, edge_attr=edge_feats)
+        template_graphs.append(data)
     
     print("Testing Ligand Encoder/Decoder...")
     
@@ -496,7 +506,11 @@ def test_encoder_decoder():
     
     # Test decoding
     print("\n2. Testing decoding...")
-    decoded_smiles = ligand_decoder(encoded_vectors, output_format="smiles")
+    decoded_smiles = ligand_decoder(
+        encoded_vectors,
+        output_format="smiles",
+        template_graphs=template_graphs
+    )
     print(f"Decoded back to SMILES:")
     for i, (original, decoded) in enumerate(zip(test_smiles, decoded_smiles)):
         print(f"  {i+1}. Original: {original} -> Decoded: {decoded}")
