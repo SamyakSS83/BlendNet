@@ -122,23 +122,33 @@ def example_basic_usage():
         print(f"\n✓ Successfully extracted embeddings for {len(results)} proteins")
         
         for pid, result in results.items():
-            print(f"\nProtein {pid}:")
-            print(f"  Sequence length: {result['sequence_length']}")
-            print(f"  Sequence embeddings shape: {result['sequence_embeddings'].shape}")
-            print(f"  Protein embeddings shape: {result['protein_embeddings'].shape}")
-            
-            if 'binding_site_probabilities' in result:
-                probs = result['binding_site_probabilities']
-                num_sites = np.sum(probs > 0.5)
-                max_prob = np.max(probs)
-                print(f"  Predicted binding sites: {num_sites}")
-                print(f"  Max binding probability: {max_prob:.3f}")
-                
-                # Show top 3 binding sites
-                top_indices = np.argsort(probs)[-3:][::-1]
-                print("  Top binding sites:")
-                for idx in top_indices:
-                    print(f"    Position {idx+1}: {probs[idx]:.3f}")
+             print(f"\nProtein {pid}:")
+             print(f"  Sequence length: {result['sequence_length']}")
+             print(f"  Sequence embeddings shape: {result['sequence_embeddings'].shape}")
+             print(f"  Protein embeddings shape: {result['protein_embeddings'].shape}")
+             
+             if 'binding_site_probabilities' in result:
+                 probs = result['binding_site_probabilities']
+                 num_sites = np.sum(probs > 0.5)
+                 max_prob = np.max(probs)
+                 print(f"  Predicted binding sites: {num_sites}")
+                 print(f"  Max binding probability: {max_prob:.3f}")
+                 
+                 # Show top 3 binding sites
+                 top_indices = np.argsort(probs)[-3:][::-1]
+                 print("  Top binding sites:")
+                 for idx in top_indices:
+                     print(f"    Position {idx+1}: {probs[idx]:.3f}")
+        
+        # Generate and print a single embedding vector per protein by mean pooling sequence embeddings
+        # 'sequence_embeddings' has shape (sequence_length, embedding_dim), e.g., (L, 1024)
+        # Mean pooling across the sequence dimension yields a (embedding_dim,) vector
+        print("\nSingle-vector embeddings (mean-pooled) for each protein:")
+        for pid, result in results.items():
+            seq_emb = result['sequence_embeddings']  # shape (L, D)
+            single_vector = np.mean(seq_emb, axis=0)  # shape (D,)
+            print(f"Protein {pid} single vector shape: {single_vector.shape}")
+            print(f"Protein {pid} single vector: {single_vector}")
         
         return results
         
