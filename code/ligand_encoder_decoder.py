@@ -386,8 +386,7 @@ def ligand_decoder(
     output_format: str = "smiles",
     template_graphs: Optional[List[Data]] = None,
     hidden_dim: int = 256,
-    device: Optional[str] = None,
-    **kwargs
+    device: Optional[str] = None
 ) -> Union[List[str], Dict[str, torch.Tensor]]:
     """
     High-level function to decode vector representations back to molecular representations.
