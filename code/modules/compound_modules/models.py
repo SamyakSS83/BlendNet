@@ -5,7 +5,7 @@ from typing import List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import MessagePassing
+from torch_geometric.nn import MessagePassing, GCNConv
 from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_pool
 from torch_geometric.utils import add_self_loops, softmax
 from torch_scatter import scatter_add, scatter_mean
@@ -152,8 +152,9 @@ class GNNDecoder(torch.nn.Module):
         self._dec_type = gnn_type 
         if gnn_type == "gin":
             self.conv = GINConv(hidden_dim, out_dim, aggr = "add")
-        #elif gnn_type == "gcn":
-        #    self.conv = GCNConv(hidden_dim, out_dim, aggr = "add")
+        elif gnn_type == "gcn":
+            # Graph Convolutional Network decoder without edge attributes
+            self.conv = GCNConv(hidden_dim, out_dim)
         elif gnn_type == "linear":
             self.dec = torch.nn.Linear(hidden_dim, out_dim)
         else:
@@ -167,7 +168,12 @@ class GNNDecoder(torch.nn.Module):
         else:
             x = self.activation(x)
             x = self.enc_to_dec(x)
-            out = self.conv(x, edge_index, edge_attr)
+            if self._dec_type == "gcn":
+                # GCNConv does not use edge attributes
+                out = self.conv(x, edge_index)
+            else:
+                # GINConv or other convs that use edge_attr
+                out = self.conv(x, edge_index, edge_attr)
         return out
 
 class GINConv(MessagePassing):
