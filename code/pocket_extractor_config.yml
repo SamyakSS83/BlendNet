@@ -3,7 +3,7 @@ Path:
     prot_feats: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/PDB/BS/Training_BS_protein_features.pkl"
 
     save_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/pocket/"
-    check_point: "/home/sarvesh/scratch/GS/negroni_data/Blendnet//home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/pocket/CV1/pocket_extractor.pth"
+    check_point: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/pocket/CV1/pocket_extractor.pth"
     
 Train:
     epochs: 100
