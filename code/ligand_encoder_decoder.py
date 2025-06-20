@@ -18,9 +18,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Union, Dict, Tuple, List
 import numpy as np
+import sys
+import os
 from rdkit import Chem
 from rdkit.Chem import MolToSmiles, MolFromSmiles
 import warnings
+
+# Add parent directory to path to import feature_generation module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import BlendNet modules
 from modules.compound_modules.pna import PNA
