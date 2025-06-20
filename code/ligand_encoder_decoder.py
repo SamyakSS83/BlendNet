@@ -31,10 +31,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from modules.compound_modules.pna import PNA
 from modules.compound_modules.models import VectorQuantizer, GNNDecoder, AtomEncoder, BondEncoder
 from feature_generation.compound.Get_Mol_features import get_mol_features, allowable_features
-
-# Import PyTorch Geometric utilities
 from torch_geometric.data import Data, Batch
-from torch_geometric.nn import global_mean_pool, global_add_pool, global_max_pool
 
 
 class LigandEncoder(nn.Module):
@@ -270,86 +267,70 @@ class LigandDecoder(nn.Module):
     def decode_to_smiles(
         self,
         encoded_vectors: torch.Tensor,
-        template_graph: Optional[Data] = None,
-        max_atoms: int = 50
+        template_graphs: List[Data]
     ) -> List[str]:
         """
-        Decode vectors to SMILES strings.
-        
+        Decode vectors to SMILES strings using provided template graphs.
+
         Args:
-            encoded_vectors: Encoded vector representations
-            template_graph: Template graph structure (if None, uses a simple chain)
-            max_atoms: Maximum number of atoms for generated molecules
-            
+            encoded_vectors: Encoded vector representations (B x D)
+            template_graphs: List of PyG Data objects with x, edge_index, edge_attr
+
         Returns:
-            List of SMILES strings
+            List of SMILES strings, one per graph
         """
-        # This is a simplified implementation
-        # In practice, you would need a more sophisticated graph generation approach
-        
-        smiles_list = []
+        smiles_list: List[str] = []
         batch_size = encoded_vectors.size(0)
-        
-        for i in range(batch_size):
-            try:
-                # Create a simple template if none provided
-                if template_graph is None:
-                    # Create a simple chain structure
-                    num_atoms = min(max_atoms, 10)  # Simple chain of 10 atoms
-                    edge_index = torch.tensor([
-                        [j for j in range(num_atoms-1)] + [j+1 for j in range(num_atoms-1)],
-                        [j+1 for j in range(num_atoms-1)] + [j for j in range(num_atoms-1)]
-                    ], dtype=torch.long)
-                    edge_attr = torch.zeros((edge_index.size(1), 4), dtype=torch.long)
-                else:
-                    num_atoms = template_graph.x.size(0)
-                    edge_index = template_graph.edge_index
-                    edge_attr = template_graph.edge_attr
-                
-                # Decode features
-                decoded = self.forward(
-                    encoded_vectors[i:i+1],
-                    edge_index,
-                    edge_attr,
-                    num_atoms
-                )
-                
-                # Get predicted atom and bond types
-                atom_types = torch.argmax(decoded["atom_logits"], dim=-1)
-                bond_types = torch.argmax(decoded["bond_logits"], dim=-1)
-                
-                # Convert to RDKit molecule (simplified)
-                mol = Chem.RWMol()
-                
-                # Add atoms
-                for atom_idx in range(num_atoms):
-                    atom_type = atom_types[atom_idx].item()
-                    if atom_type < 118:  # Valid atomic number
-                        mol.AddAtom(Chem.Atom(atom_type + 1))  # RDKit uses 1-based atomic numbers
-                    else:
-                        mol.AddAtom(Chem.Atom(6))  # Default to carbon
-                
-                # Add bonds (simplified - only single bonds)
-                edges_added = set()
-                for edge_idx in range(0, edge_index.size(1), 2):  # Skip reverse edges
-                    i_atom = edge_index[0, edge_idx].item()
-                    j_atom = edge_index[1, edge_idx].item()
-                    
-                    if (i_atom, j_atom) not in edges_added and (j_atom, i_atom) not in edges_added:
-                        if i_atom < num_atoms and j_atom < num_atoms and i_atom != j_atom:
-                            mol.AddBond(i_atom, j_atom, Chem.BondType.SINGLE)
-                            edges_added.add((i_atom, j_atom))
-                
-                # Convert to SMILES
-                mol = mol.GetMol()
-                Chem.SanitizeMol(mol)
-                smiles = MolToSmiles(mol)
-                smiles_list.append(smiles)
-                
-            except Exception as e:
-                warnings.warn(f"Could not decode vector {i}: {e}")
-                smiles_list.append("C")  # Default to methane
-        
+
+        if not isinstance(template_graphs, list) or len(template_graphs) != batch_size:
+            raise ValueError("template_graphs must be a list of Data objects matching batch size")
+
+        # Decode each vector with its corresponding graph structure
+        for i, graph in enumerate(template_graphs):
+            decoded: Dict[str, torch.Tensor] = self.forward(
+                encoded_vectors[i:i+1].to(self.device),
+                graph.edge_index.to(self.device),
+                graph.edge_attr.to(self.device),
+                graph.x.size(0)
+            )
+            # Convert logits to discrete features
+            atom_ids = torch.argmax(decoded["atom_logits"], dim=-1).view(-1).cpu().numpy()
+            chirals = torch.argmax(decoded["atom_chiral_logits"], dim=-1).view(-1).cpu().numpy()
+            bond_ids = torch.argmax(decoded["bond_logits"], dim=-1).view(-1).cpu().numpy()
+
+            # Construct molecule
+            mol = Chem.RWMol()
+            # Add atoms with chirality
+            for idx, atom_id in enumerate(atom_ids):
+                at_list = allowable_features['possible_atomic_num_list']
+                atomic_num = at_list[atom_id] if atom_id < len(at_list)-1 else 6
+                atom = Chem.Atom(int(atomic_num))
+                # Set chiral tag
+                ch_list = allowable_features['possible_chirality_list']
+                ch_tag = ch_list[chirals[idx]]
+                atom.SetChiralTag(getattr(Chem.rdchem.ChiralType, ch_tag))
+                mol.AddAtom(atom)
+
+            # Add bonds (undirected, unique)
+            bond_list = allowable_features['possible_bond_type_list']
+            num_edges = graph.edge_index.size(1)
+            seen: set = set()
+            for e_idx in range(0, num_edges):
+                u = int(graph.edge_index[0, e_idx])
+                v = int(graph.edge_index[1, e_idx])
+                if (v, u) in seen or u == v:
+                    continue
+                seen.add((u, v))
+                bond_type_str = bond_list[bond_ids[e_idx]]
+                bond_type = getattr(Chem.BondType, bond_type_str) if bond_type_str in vars(Chem.BondType) else Chem.BondType.SINGLE
+                mol.AddBond(u, v, bond_type)
+
+            # Sanitize and get SMILES
+            mol_obj = mol.GetMol()
+            Chem.SanitizeMol(mol_obj)
+            smiles = MolToSmiles(mol_obj, isomericSmiles=True)
+            smiles_list.append(smiles)
+
         return smiles_list
 
 
