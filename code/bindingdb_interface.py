@@ -13,7 +13,7 @@ from modules.common.utils import load_cfg
 
 
 def _load_bindingdb_config(config_path=None):
-    cfg_path = config_path or os.path.join(os.path.dirname(__file__), '../BindingDB.yml')
+    cfg_path = config_path or os.path.join(os.path.dirname(__file__), '/home/sarvesh/scratch/GS/samyak/.Blendnet/code/BindingDB.yml')
     return load_cfg(cfg_path)
 
 
