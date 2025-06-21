@@ -105,42 +105,158 @@ class DataPreprocessor:
         return train_df, test_df
         
     def generate_protein_embeddings(self, sequences: List[str]) -> Tuple[np.ndarray, np.ndarray]:
-        """Generate ProtBERT and Pseq2Sites embeddings for protein sequences."""
+        """Generate ProtBERT and Pseq2Sites embeddings for protein sequences with caching."""
         print("Generating protein embeddings...")
         
+        # Check cache first
+        cache_dir = os.path.join(os.path.dirname(self.ic50_data_path), 'embedding_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        protbert_cache_file = os.path.join(cache_dir, 'protbert_embeddings_cache.pkl')
+        pseq2sites_cache_file = os.path.join(cache_dir, 'pseq2sites_embeddings_cache.pkl')
+        
+        # Load caches
+        protbert_cache = {}
+        pseq2sites_cache = {}
+        
+        if os.path.exists(protbert_cache_file):
+            print("Loading ProtBERT embeddings from cache...")
+            with open(protbert_cache_file, 'rb') as f:
+                protbert_cache = pickle.load(f)
+        
+        if os.path.exists(pseq2sites_cache_file):
+            print("Loading Pseq2Sites embeddings from cache...")
+            with open(pseq2sites_cache_file, 'rb') as f:
+                pseq2sites_cache = pickle.load(f)
+        
+        # Find sequences not in cache
+        new_sequences = []
+        sequence_indices = {}
+        
+        for i, seq in enumerate(sequences):
+            sequence_indices[seq] = i
+            if seq not in protbert_cache or seq not in pseq2sites_cache:
+                new_sequences.append(seq)
+        
+        print(f"Total sequences: {len(sequences)}")
+        print(f"New sequences to process: {len(new_sequences)}")
+        print(f"Cached sequences: {len(sequences) - len(new_sequences)}")
+        
+        # Process new sequences
+        if new_sequences:
+            print("Processing new protein sequences...")
+            
+            # Generate ProtBERT features in batches
+            new_protbert_features = {}
+            for seq in tqdm(new_sequences, desc="Generating ProtBERT features"):
+                try:
+                    if seq not in protbert_cache:
+                        protbert_feat = self.bindingdb_interface._get_protein_features(seq)
+                        protbert_pooled = np.mean(protbert_feat, axis=0)  # [1024]
+                        protbert_cache[seq] = protbert_pooled
+                        new_protbert_features[seq] = protbert_feat
+                    else:
+                        # Still need features for Pseq2Sites
+                        protbert_feat = self.bindingdb_interface._get_protein_features(seq)
+                        new_protbert_features[seq] = protbert_feat
+                except Exception as e:
+                    print(f"Error processing ProtBERT for sequence: {e}")
+                    protbert_cache[seq] = np.zeros(1024)
+                    new_protbert_features[seq] = np.zeros((50, 1024))  # Fallback
+            
+            # Generate Pseq2Sites embeddings in batch
+            if new_protbert_features:
+                new_pseq2sites_sequences = [seq for seq in new_sequences if seq not in pseq2sites_cache]
+                if new_pseq2sites_sequences:
+                    try:
+                        print(f"Batch processing {len(new_pseq2sites_sequences)} sequences with Pseq2Sites...")
+                        
+                        # Prepare batch data for Pseq2Sites
+                        protein_features = {}
+                        protein_sequences = {}
+                        
+                        for seq in new_pseq2sites_sequences:
+                            temp_id = f"prot_{hash(seq) % 1000000}"  # Create unique ID
+                            protein_features[temp_id] = new_protbert_features[seq]
+                            protein_sequences[temp_id] = seq
+                        
+                        # Batch process with Pseq2Sites
+                        results = self.bindingdb_interface.pseq2sites.extract_embeddings(
+                            protein_features=protein_features,
+                            protein_sequences=protein_sequences,
+                            batch_size=16,  # Adjust based on memory
+                            return_predictions=False,
+                            return_attention=False
+                        )
+                        
+                        # Extract embeddings and cache them
+                        for seq in new_pseq2sites_sequences:
+                            temp_id = f"prot_{hash(seq) % 1000000}"
+                            if temp_id in results:
+                                # Get sequence embeddings and pool
+                                seq_emb = results[temp_id]['sequence_embeddings']
+                                pseq2sites_pooled = np.mean(seq_emb, axis=0)
+                                pseq2sites_cache[seq] = pseq2sites_pooled
+                            else:
+                                print(f"Warning: No Pseq2Sites result for sequence")
+                                pseq2sites_cache[seq] = np.zeros(256)  # Fallback
+                        
+                    except Exception as e:
+                        print(f"Batch Pseq2Sites processing failed: {e}")
+                        print("Falling back to individual processing...")
+                        
+                        # Individual processing fallback
+                        for seq in new_pseq2sites_sequences:
+                            if seq not in pseq2sites_cache:
+                                try:
+                                    protbert_feat = new_protbert_features[seq]
+                                    pseq2sites_feat = get_protein_matrix(protbert_feat, seq)
+                                    pseq2sites_pooled = np.mean(pseq2sites_feat, axis=0)
+                                    pseq2sites_cache[seq] = pseq2sites_pooled
+                                except Exception as e2:
+                                    print(f"Individual Pseq2Sites processing failed: {e2}")
+                                    pseq2sites_cache[seq] = np.zeros(256)
+            
+            # Save updated caches
+            print("Saving updated caches...")
+            with open(protbert_cache_file, 'wb') as f:
+                pickle.dump(protbert_cache, f)
+            with open(pseq2sites_cache_file, 'wb') as f:
+                pickle.dump(pseq2sites_cache, f)
+        
+        # Collect embeddings in correct order
         protbert_embeddings = []
         pseq2sites_embeddings = []
         
-        for i, seq in enumerate(tqdm(sequences, desc="Processing proteins")):
-            try:
-                # Generate ProtBERT features
-                protbert_feat = self.bindingdb_interface._get_protein_features(seq)
-                
-                # Generate Pseq2Sites embeddings using the interface
-                pseq2sites_feat = get_protein_matrix(protbert_feat, seq)
-                
-                # Pool to fixed size (mean pooling)
-                protbert_pooled = np.mean(protbert_feat, axis=0)  # [1024]
-                pseq2sites_pooled = np.mean(pseq2sites_feat, axis=0)  # [embedding_dim]
-                
-                protbert_embeddings.append(protbert_pooled)
-                pseq2sites_embeddings.append(pseq2sites_pooled)
-                
-            except Exception as e:
-                print(f"Error processing sequence {i}: {e}")
-                # Use zero embeddings as fallback
-                protbert_embeddings.append(np.zeros(1024))
-                pseq2sites_embeddings.append(np.zeros(256))  # Adjust dimension as needed
-                
+        for seq in sequences:
+            protbert_embeddings.append(protbert_cache.get(seq, np.zeros(1024)))
+            pseq2sites_embeddings.append(pseq2sites_cache.get(seq, np.zeros(256)))
+        
+        print(f"Final ProtBERT embeddings shape: {np.array(protbert_embeddings).shape}")
+        print(f"Final Pseq2Sites embeddings shape: {np.array(pseq2sites_embeddings).shape}")
+        
         return np.array(protbert_embeddings), np.array(pseq2sites_embeddings)
         
     def generate_compound_embeddings(self, smiles_list: List[str]) -> np.ndarray:
-        """Generate smi-TED embeddings for compounds."""
+        """Generate smi-TED embeddings for compounds with caching."""
         print("Generating compound embeddings...")
         
-        # Filter valid SMILES
+        # Check cache first
+        cache_dir = os.path.join(os.path.dirname(self.ic50_data_path), 'embedding_cache')
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_file = os.path.join(cache_dir, 'compound_embeddings_cache.pkl')
+        
+        if os.path.exists(cache_file):
+            print("Loading compound embeddings from cache...")
+            with open(cache_file, 'rb') as f:
+                cache = pickle.load(f)
+        else:
+            cache = {}
+        
+        # Filter valid SMILES and check cache
         valid_smiles = []
         valid_indices = []
+        new_smiles = []
         
         for i, smiles in enumerate(smiles_list):
             try:
@@ -149,54 +265,60 @@ class DataPreprocessor:
                 if mol is not None:
                     valid_smiles.append(smiles)
                     valid_indices.append(i)
+                    if smiles not in cache:
+                        new_smiles.append(smiles)
             except:
                 pass
                 
         print(f"Valid SMILES: {len(valid_smiles)}/{len(smiles_list)}")
+        print(f"New SMILES to encode: {len(new_smiles)}")
+        print(f"Cached SMILES: {len(valid_smiles) - len(new_smiles)}")
         
-        # Generate embeddings
-        with torch.no_grad():
-            # Try different approaches for smi-TED encoding
+        # Generate embeddings for new SMILES
+        if new_smiles:
             try:
-                embeddings = self.smi_ted.encode(valid_smiles, return_torch=False)
-                print(f"smi-TED encode method returned shape: {embeddings.shape}")
-            except Exception as e:
-                print(f"smi-TED encode failed: {e}")
-                # Fallback: encode one by one
-                embeddings_list = []
-                for smiles in valid_smiles[:10]:  # Test with first 10
-                    try:
-                        emb = self.smi_ted.encode([smiles], return_torch=False)
-                        embeddings_list.append(emb)
-                    except Exception as e2:
-                        print(f"Individual encoding failed for {smiles}: {e2}")
-                        break
+                print("Encoding new compounds...")
+                with torch.no_grad():
+                    new_embeddings = self.smi_ted.encode(new_smiles, return_torch=False)
+                print(f"New embeddings shape: {new_embeddings.shape}")
                 
-                if embeddings_list:
-                    embeddings = np.vstack(embeddings_list)
-                    print(f"Individual encoding shape: {embeddings.shape}")
-                else:
-                    # Use random embeddings as fallback
-                    print("Using random embeddings as fallback")
-                    embeddings = np.random.randn(len(valid_smiles), 512)
+                # Update cache
+                for i, smiles in enumerate(new_smiles):
+                    cache[smiles] = new_embeddings[i]
+                
+                # Save updated cache
+                with open(cache_file, 'wb') as f:
+                    pickle.dump(cache, f)
+                print(f"Cache updated with {len(new_smiles)} new embeddings")
+                
+            except Exception as e:
+                print(f"Encoding failed: {e}")
+                # Generate random embeddings as fallback
+                for smiles in new_smiles:
+                    cache[smiles] = np.random.randn(768)  # Default smi-TED dimension
+        
+        # Collect all embeddings from cache in the correct order
+        all_embeddings = []
+        for smiles in valid_smiles:
+            if smiles in cache:
+                all_embeddings.append(cache[smiles])
+            else:
+                # Fallback for missing embeddings
+                all_embeddings.append(np.random.randn(768))
+        
+        if all_embeddings:
+            embeddings = np.array(all_embeddings)
+        else:
+            # Complete fallback
+            embeddings = np.random.randn(len(valid_smiles), 768)
             
         print(f"Final embeddings shape: {embeddings.shape}")
         
-        # Handle different embedding shapes
-        if embeddings.ndim == 1:
-            # If 1D, reshape to (n_samples, 1) 
-            embeddings = embeddings.reshape(-1, 1)
-        elif embeddings.ndim > 2:
-            # If more than 2D, flatten to 2D
-            embeddings = embeddings.reshape(embeddings.shape[0], -1)
-            
-        embedding_dim = embeddings.shape[1]
-        print(f"Using embedding dimension: {embedding_dim}")
-        
         # Create full embeddings array with zeros for invalid SMILES
-        full_embeddings = np.zeros((len(smiles_list), embedding_dim))
+        full_embeddings = np.zeros((len(smiles_list), embeddings.shape[1]))
         for i, valid_idx in enumerate(valid_indices):
-            full_embeddings[valid_idx] = embeddings[i]
+            if i < len(embeddings):
+                full_embeddings[valid_idx] = embeddings[i]
             
         return full_embeddings
         
