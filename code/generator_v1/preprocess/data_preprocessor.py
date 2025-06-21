@@ -186,14 +186,21 @@ class DataPreprocessor:
         
     def split_unique_molecules(self, df: pd.DataFrame, 
                               train_ratio: float = 0.8) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Split dataset based on unique molecules."""
-        print("Splitting dataset by unique molecules...")
+        """
+        Split dataset based on unique molecules (SMILES) as per idea.md.
         
-        # Get unique SMILES
+        This ensures no compound appears in both train and test sets,
+        preventing data leakage while allowing proteins to appear in both sets
+        with different compound partners.
+        """
+        print("Splitting dataset by unique molecules (idea.md compliance)...")
+        
+        # Get unique SMILES - this is the key constraint from idea.md
         unique_smiles = df['SMILES'].unique()
         print(f"Found {len(unique_smiles)} unique molecules")
         
         # Random split of unique molecules
+        np.random.seed(42)  # For reproducibility
         np.random.shuffle(unique_smiles)
         split_idx = int(len(unique_smiles) * train_ratio)
         
@@ -206,6 +213,22 @@ class DataPreprocessor:
         
         print(f"Train set: {len(train_df)} records ({len(train_smiles)} unique molecules)")
         print(f"Test set: {len(test_df)} records ({len(test_smiles)} unique molecules)")
+        
+        # Verify compliance with idea.md: no molecule overlap
+        train_molecules = set(train_df['SMILES'].unique())
+        test_molecules = set(test_df['SMILES'].unique())
+        overlap = train_molecules.intersection(test_molecules)
+        
+        if len(overlap) == 0:
+            print("✅ idea.md compliance: No molecule overlap between train/test")
+        else:
+            print(f"❌ idea.md violation: {len(overlap)} molecules overlap between train/test")
+        
+        # Check protein overlap (this is allowed per idea.md)
+        train_proteins = set(train_df['Seqs'].unique())
+        test_proteins = set(test_df['Seqs'].unique())
+        protein_overlap = train_proteins.intersection(test_proteins)
+        print(f"Protein overlap: {len(protein_overlap)} proteins (allowed per idea.md)")
         
         return train_df, test_df
         
@@ -489,8 +512,8 @@ class DataPreprocessor:
         # Load data
         df = self.load_ic50_data()
         
-        # Limit samples if specified
-        if max_samples > 0 and len(df) > max_samples:
+        # Limit samples if specified (None means use all data per idea.md)
+        if max_samples is not None and max_samples > 0 and len(df) > max_samples:
             print(f"Limiting to {max_samples} samples from {len(df)}")
             df = df.sample(n=max_samples, random_state=42).reset_index(drop=True)
         
