@@ -45,18 +45,22 @@ class BindingPredictor:
         # Initialize the predictor (no longer using Pseq2Sites to avoid download issues)
         print("Skipping Pseq2Sites - using dummy ProtBERT features for compatibility...")
         
-        # Load BlendNetS models for Ki and IC50 prediction
+        # Load BlendNetS models for Ki and IC50 prediction - match working test script exactly
         print("Loading BlendNetS models...")
-        self.model_ki = BlendNetS(self.config["Path"]["Ki_interaction_site_predictor"], self.config, self.device).to(self.device).eval()
-        self.model_ic50 = BlendNetS(self.config["Path"]["IC50_interaction_site_predictor"], self.config, self.device).to(self.device).eval()
+        self.model_ki = BlendNetS(self.config["Path"]["Ki_interaction_site_predictor"], self.config, self.device).cuda()
+        self.model_ic50 = BlendNetS(self.config["Path"]["IC50_interaction_site_predictor"], self.config, self.device).cuda()
         
-        # Load trained model weights
+        # Load trained model weights - match working test script exactly
         try:
-            ki_checkpoint = torch.load(f"{self.config['Path']['Ki_save_path']}/random_split/CV0/BlendNet_S.pth", map_location=self.device, weights_only=True)
-            ic50_checkpoint = torch.load(f"{self.config['Path']['IC50_save_path']}/random_split/CV0/BlendNet_S.pth", map_location=self.device, weights_only=True)
+            ki_checkpoint = torch.load(f"{self.config['Path']['Ki_save_path']}/random_split/CV0/BlendNet_S.pth", weights_only=True)
+            ic50_checkpoint = torch.load(f"{self.config['Path']['IC50_save_path']}/random_split/CV0/BlendNet_S.pth", weights_only=True)
             
             self.model_ki.load_state_dict(ki_checkpoint)
             self.model_ic50.load_state_dict(ic50_checkpoint)
+            
+            # Set to eval mode after loading weights
+            self.model_ki.eval()
+            self.model_ic50.eval()
         except Exception as e:
             print(f"Warning: Could not load trained weights: {e}")
             print("Using pre-trained teacher model weights...")
