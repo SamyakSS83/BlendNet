@@ -117,61 +117,44 @@ class BindingPredictor:
         edge_attr = edge_feats.clone().detach().to(device=self.device)
         
         # Create PyTorch Geometric Data object (same as BADataset.get_graph)
-        data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=n_atoms)
+        # Force integer dtype for embedding indices
+        data = Data(x=x.long(), edge_index=edge_index, edge_attr=edge_attr.long(), num_nodes=n_atoms)
         
         return data, n_atoms
     
     def predict_binding_affinity(self, sequence: str, smiles: str):
         """
-        Predict Ki and IC50 values for protein-ligand pair.
-        Uses the exact same data format as the working BindingDB test script.
-        
-        Args:
-            sequence: Protein amino acid sequence
-            smiles: Ligand SMILES string
-            
-        Returns:
-            tuple: (ki_prediction, ic50_prediction)
+        Predict Ki and IC50 values for protein-ligand pair using the same batching as tests.
         """
         print(f"Predicting binding affinity...")
         print(f"Protein length: {len(sequence)}")
         print(f"SMILES: {smiles}")
-        
-        # Extract protein features (1024-dim) - matching working script format
-        protein_features = self.extract_protein_features(sequence)
-        seq_len = protein_features.shape[0]
-        
-        # Create pocket mask (assume all residues are part of pocket for simplicity)
-        pocket_indices = list(range(seq_len))  # All residues
-        
-        # Convert SMILES to compound graph - matching working script format
-        compound_graph, n_atoms = self.smiles_to_graph(smiles)
-        
-        # Create data in the exact format expected by pad_data function
+
+        # Protein features
+        prot_feats = self.extract_protein_features(sequence)
+        seq_len = prot_feats.shape[0]
+        pocket_inds = list(range(seq_len))
+
+        # Compound graph
+        comp_graph, n_atoms = self.smiles_to_graph(smiles)
+
+        # Create sample dict for pad_data
         sample = {
-            'pfeat': protein_features.cpu().numpy(),  # Full protein features
-            'pocket': pocket_indices,                 # Pocket residue indices  
-            'seqlength': seq_len,                    # Sequence length
-            'compound_graph': compound_graph,        # PyTorch Geometric Data
-            'num_node': n_atoms,                     # Number of atoms
-            'label': 0.0                            # Dummy label
+            'pfeat': prot_feats.cpu().numpy(),
+            'pocket': pocket_inds,
+            'seqlength': seq_len,
+            'compound_graph': comp_graph,
+            'num_node': n_atoms,
+            'label': 0.0
         }
-        
-        # Use the exact same batching as the working script
+
         from modules.interaction_modules.BDB_loaders import pad_data
-        
-        # Create batch using pad_data (same as working script)
-        (protein_data, seq_lengths), compound_graph_batch, labels, pocket_mask, compound_mask = pad_data([sample])
-        
-        # Ensure compound graph features are integer dtype for embeddings
-        compound_graph_batch.x = compound_graph_batch.x.long()
-        compound_graph_batch.edge_attr = compound_graph_batch.edge_attr.long()
-        
-        # Make predictions using the exact same format as working script
+        (protein_data, seq_lengths), comp_batch, labels, pocket_mask, compound_mask = pad_data([sample])
+
+        # Run predictions
         with torch.no_grad():
-            ki_pred, *_ = self.model_ki(protein_data, compound_graph_batch, pocket_mask, compound_mask)
-            ic50_pred, *_ = self.model_ic50(protein_data, compound_graph_batch, pocket_mask, compound_mask)
-        
+            ki_pred, *_ = self.model_ki(protein_data, comp_batch, pocket_mask, compound_mask)
+            ic50_pred, *_ = self.model_ic50(protein_data, comp_batch, pocket_mask, compound_mask)
         return ki_pred.item(), ic50_pred.item()
 
 def main():
