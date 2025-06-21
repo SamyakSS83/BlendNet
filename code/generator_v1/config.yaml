@@ -1,0 +1,145 @@
+# Configuration file for protein-ligand diffusion model
+
+# Data paths
+data:
+  ic50_data_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv"
+  smi_ted_path: "../../materials.smi-ted/smi-ted/inference/smi_ted_light"
+  smi_ted_checkpoint: "smi-ted-Light_40.pt"
+  bindingdb_config: "../../BindingDB.yml"
+  
+  # BlendNet model weights
+  ki_weights: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth"
+  ic50_weights: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth"
+
+# Preprocessing configuration
+preprocessing:
+  output_dir: "./preprocessed_data"
+  max_samples: 50000  # Set to -1 for all data
+  test_split: 0.2
+  validation_split: 0.1
+  min_protein_length: 50
+  max_protein_length: 2000
+  min_compound_atoms: 5
+  max_compound_atoms: 100
+
+# Vector database configuration
+vector_database:
+  faiss_index_type: "IndexFlatIP"  # For cosine similarity
+  embedding_dimensions:
+    protbert: 1024
+    pseq2sites: 256  # Depends on actual embedding size
+    compound: 512    # smi-TED embedding size
+  search_parameters:
+    alpha: 0.7  # Weight for pseq2sites vs protbert similarity
+    nprobe: 10  # For IVF indices
+
+# Diffusion model configuration
+diffusion_model:
+  # Architecture
+  compound_dim: 512
+  protbert_dim: 1024
+  pseq2sites_dim: 256
+  hidden_dim: 512
+  num_layers: 6
+  num_heads: 8
+  dropout: 0.1
+  
+  # Diffusion parameters
+  num_timesteps: 1000
+  noise_schedule: "linear"  # Options: linear, cosine
+  beta_start: 0.0001
+  beta_end: 0.02
+  
+  # Conditioning
+  cross_attention: true
+  self_attention: true
+  conditioning_dropout: 0.1
+
+# Training configuration
+training:
+  # Optimization
+  batch_size: 32
+  learning_rate: 1e-4
+  weight_decay: 1e-5
+  num_epochs: 100
+  warmup_steps: 1000
+  scheduler: "cosine"  # Options: cosine, linear, constant
+  
+  # Loss function
+  lambda_ic50: 0.1  # Weight for IC50 regularization
+  loss_type: "mse"  # Options: mse, l1, huber
+  
+  # Checkpointing
+  save_every: 10  # Save checkpoint every N epochs
+  validate_every: 5  # Validate every N epochs
+  output_dir: "./trained_models"
+  
+  # Early stopping
+  patience: 15
+  min_delta: 1e-4
+
+# Inference configuration
+inference:
+  # Generation parameters
+  num_samples: 10
+  top_k_retrieve: 10
+  num_inference_steps: 50
+  guidance_scale: 1.0
+  
+  # Sampling
+  sampling_method: "ddim"  # Options: ddpm, ddim
+  eta: 0.0  # For DDIM sampling
+  
+  # Post-processing
+  filter_invalid: true
+  deduplicate: true
+  ic50_threshold: 1000.0  # nM, filter compounds above this IC50
+
+# Evaluation configuration
+evaluation:
+  # Metrics to compute
+  compute_validity: true
+  compute_uniqueness: true
+  compute_diversity: true
+  compute_drug_likeness: true
+  compute_novelty: true
+  
+  # Thresholds
+  high_affinity_threshold: 100.0  # nM
+  similarity_threshold: 0.4  # For novelty computation
+  
+  # Reference datasets for comparison
+  reference_datasets: []
+
+# Computational configuration
+compute:
+  device: "cuda"  # Options: cuda, cpu, auto
+  num_workers: 4
+  pin_memory: true
+  mixed_precision: true
+  
+  # Memory optimization
+  gradient_checkpointing: false
+  max_batch_size_auto: true
+
+# Logging and monitoring
+logging:
+  level: "INFO"
+  log_dir: "./logs"
+  log_to_file: true
+  log_to_console: true
+  
+  # Experiment tracking
+  use_wandb: false
+  wandb_project: "protein-ligand-diffusion"
+  use_tensorboard: true
+  
+  # Visualization
+  plot_losses: true
+  plot_samples: true
+  save_plots: true
+
+# Random seeds for reproducibility
+random_seed: 42
+torch_seed: 42
+numpy_seed: 42
