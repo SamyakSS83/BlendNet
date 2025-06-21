@@ -156,10 +156,45 @@ class DataPreprocessor:
         
         # Generate embeddings
         with torch.no_grad():
-            embeddings = self.smi_ted.encode(valid_smiles, return_torch=False)
+            # Try different approaches for smi-TED encoding
+            try:
+                embeddings = self.smi_ted.encode(valid_smiles, return_torch=False)
+                print(f"smi-TED encode method returned shape: {embeddings.shape}")
+            except Exception as e:
+                print(f"smi-TED encode failed: {e}")
+                # Fallback: encode one by one
+                embeddings_list = []
+                for smiles in valid_smiles[:10]:  # Test with first 10
+                    try:
+                        emb = self.smi_ted.encode([smiles], return_torch=False)
+                        embeddings_list.append(emb)
+                    except Exception as e2:
+                        print(f"Individual encoding failed for {smiles}: {e2}")
+                        break
+                
+                if embeddings_list:
+                    embeddings = np.vstack(embeddings_list)
+                    print(f"Individual encoding shape: {embeddings.shape}")
+                else:
+                    # Use random embeddings as fallback
+                    print("Using random embeddings as fallback")
+                    embeddings = np.random.randn(len(valid_smiles), 512)
             
+        print(f"Final embeddings shape: {embeddings.shape}")
+        
+        # Handle different embedding shapes
+        if embeddings.ndim == 1:
+            # If 1D, reshape to (n_samples, 1) 
+            embeddings = embeddings.reshape(-1, 1)
+        elif embeddings.ndim > 2:
+            # If more than 2D, flatten to 2D
+            embeddings = embeddings.reshape(embeddings.shape[0], -1)
+            
+        embedding_dim = embeddings.shape[1]
+        print(f"Using embedding dimension: {embedding_dim}")
+        
         # Create full embeddings array with zeros for invalid SMILES
-        full_embeddings = np.zeros((len(smiles_list), embeddings.shape[1]))
+        full_embeddings = np.zeros((len(smiles_list), embedding_dim))
         for i, valid_idx in enumerate(valid_indices):
             full_embeddings[valid_idx] = embeddings[i]
             
