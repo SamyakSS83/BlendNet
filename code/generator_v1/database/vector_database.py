@@ -115,15 +115,22 @@ class ProteinLigandVectorDB:
         print(f"  Compound: type={type(compound_emb)}, shape={compound_emb.shape}, dtype={compound_emb.dtype}")
         
         # Ensure embeddings are C-contiguous for FAISS
-        if not protbert_emb.flags.c_contiguous:
-            print("Making ProtBERT embeddings C-contiguous...")
-            protbert_emb = np.ascontiguousarray(protbert_emb)
-        if not pseq2sites_emb.flags.c_contiguous:
-            print("Making Pseq2Sites embeddings C-contiguous...")
-            pseq2sites_emb = np.ascontiguousarray(pseq2sites_emb)
-        if not compound_emb.flags.c_contiguous:
-            print("Making compound embeddings C-contiguous...")
-            compound_emb = np.ascontiguousarray(compound_emb)
+        print("Ensuring arrays are C-contiguous and properly formatted for FAISS...")
+        
+        # Force C-contiguous arrays with explicit copy
+        protbert_emb = np.ascontiguousarray(protbert_emb, dtype=np.float32)
+        pseq2sites_emb = np.ascontiguousarray(pseq2sites_emb, dtype=np.float32)
+        compound_emb = np.ascontiguousarray(compound_emb, dtype=np.float32)
+        
+        print(f"Final array properties:")
+        print(f"  ProtBERT: C_CONTIGUOUS={protbert_emb.flags.c_contiguous}, OWNDATA={protbert_emb.flags.owndata}")
+        print(f"  Pseq2Sites: C_CONTIGUOUS={pseq2sites_emb.flags.c_contiguous}, OWNDATA={pseq2sites_emb.flags.owndata}")
+        print(f"  Compound: C_CONTIGUOUS={compound_emb.flags.c_contiguous}, OWNDATA={compound_emb.flags.owndata}")
+        
+        # Double-check that these are proper numpy arrays
+        assert isinstance(protbert_emb, np.ndarray), f"ProtBERT is not numpy array: {type(protbert_emb)}"
+        assert isinstance(pseq2sites_emb, np.ndarray), f"Pseq2Sites is not numpy array: {type(pseq2sites_emb)}"
+        assert isinstance(compound_emb, np.ndarray), f"Compound is not numpy array: {type(compound_emb)}"
         
         # Build FAISS indices (using Inner Product for normalized vectors = cosine similarity)
         print("Creating FAISS indices...")
