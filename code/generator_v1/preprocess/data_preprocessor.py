@@ -1,6 +1,15 @@
 """
-Data preprocessing for protein-ligand diffusion model.
-Loads IC50 data and generates embeddings for vector database.
+Data preprocessing for protein-ligand diffusion        # Initialize ProtBERT directly (more efficient than full BindingDB interface)
+        print("Loading ProtBERT...")
+        from transformers import BertModel, BertTokenizer
+        self.tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False)
+        self.protbert_model = BertModel.from_pretrained("Rostlab/prot_bert", use_safetensors=True).to(device)
+        self.protbert_model.eval()
+        
+        # Initialize Pseq2Sites
+        print("Loading Pseq2Sites...")
+        from modules.pocket_modules.pseq2sites_embeddings import Pseq2SitesEmbeddings
+        self.pseq2sites = Pseq2SitesEmbeddings(device=device)Loads IC50 data and generates embeddings for vector database.
 """
 import os
 import sys
@@ -15,7 +24,6 @@ from tqdm import tqdm
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../materials.smi-ted/smi-ted/'))
 
-from bindingdb_interface import BindingDBInterface
 from pseq2sites_interface import get_protein_matrix
 from inference.smi_ted_light.load import load_smi_ted
 
@@ -49,17 +57,46 @@ class DataPreprocessor:
             ckpt_filename=smi_ted_ckpt
         )
         
-        # Initialize BindingDB interface for protein embeddings
-        print("Loading BindingDB interface...")
-        self.bindingdb_interface = BindingDBInterface(
-            config_path="../BindingDB.yml",
-            ki_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
-            ic50_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
-            device=device
-        )
-        
         print("Models loaded successfully!")
         
+    def _get_protein_features(self, protein_seq: str) -> np.ndarray:
+        """Generate ProtBERT features from protein sequence (same as bindingdb_interface)"""
+        if not protein_seq or len(protein_seq) == 0:
+            raise ValueError("Protein sequence cannot be empty")
+            
+        import re
+        # Clean sequence and format for ProtBERT
+        clean_seq = re.sub(r"[UZOB]", "X", protein_seq)
+        formatted_seq = " ".join(list(clean_seq))
+        
+        # Tokenize with proper length handling
+        ids = self.tokenizer.batch_encode_plus(
+            [formatted_seq], 
+            add_special_tokens=True, 
+            padding=True, 
+            truncation=True, 
+            max_length=1024,  # ProtBERT max length
+            return_tensors='pt'
+        )
+        
+        input_ids = ids['input_ids'].to(self.device)
+        attention_mask = ids['attention_mask'].to(self.device)
+        
+        # Get ProtBERT embeddings
+        with torch.no_grad():
+            embedding = self.protbert_model(input_ids=input_ids, attention_mask=attention_mask)[0]
+            embedding = embedding.cpu().numpy()
+            seq_len = (attention_mask[0] == 1).sum()
+            
+            # Remove [CLS] and [SEP] tokens, handle max length
+            if seq_len < 1024:
+                seq_emb = embedding[0][1:seq_len-1]
+            else:
+                seq_emb = embedding[0][1:1023]  # Max length handling
+                print(f"Warning: Protein sequence truncated to {seq_emb.shape[0]} residues")
+                
+        return seq_emb
+    
     def load_ic50_data(self) -> pd.DataFrame:
         """Load and preprocess IC50 dataset."""
         print(f"Loading IC50 data from {self.ic50_data_path}")
@@ -151,13 +188,13 @@ class DataPreprocessor:
             for seq in tqdm(new_sequences, desc="Generating ProtBERT features"):
                 try:
                     if seq not in protbert_cache:
-                        protbert_feat = self.bindingdb_interface._get_protein_features(seq)
+                        protbert_feat = self._get_protein_features(seq)
                         protbert_pooled = np.mean(protbert_feat, axis=0)  # [1024]
                         protbert_cache[seq] = protbert_pooled
                         new_protbert_features[seq] = protbert_feat
                     else:
                         # Still need features for Pseq2Sites
-                        protbert_feat = self.bindingdb_interface._get_protein_features(seq)
+                        protbert_feat = self._get_protein_features(seq)
                         new_protbert_features[seq] = protbert_feat
                 except Exception as e:
                     print(f"Error processing ProtBERT for sequence: {e}")
@@ -181,7 +218,7 @@ class DataPreprocessor:
                             protein_sequences[temp_id] = seq
                         
                         # Batch process with Pseq2Sites
-                        results = self.bindingdb_interface.pseq2sites.extract_embeddings(
+                        results = self.pseq2sites.extract_embeddings(
                             protein_features=protein_features,
                             protein_sequences=protein_sequences,
                             batch_size=16,  # Adjust based on memory
