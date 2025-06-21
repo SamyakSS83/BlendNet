@@ -1,7 +1,7 @@
 MGraphPaths:
-    dataset_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/Input_data/Compound/MgraphDatanonH.pt"
-    output_model_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/Model_checkpoint/Compound/"
-    VQVAE_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/Model_checkpoint/Compound/vqquantizer.pth"
+    dataset_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/compound/MgraphDatanonH.pt"
+    output_model_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/Model_checkpoint/compound/"
+    VQVAE_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/Model_checkpoint/compound/vqquantizer.pth"
     
 MGraphTrain:
     device: 0
