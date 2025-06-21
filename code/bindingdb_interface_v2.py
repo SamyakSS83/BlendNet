@@ -157,8 +157,6 @@ class BindingPredictor:
         
         # Make predictions
         with torch.no_grad():
-            print(f"Debug - Before model call - compound_graph_batch.x dtype: {compound_graph_batch.x.dtype}")
-            print(f"Debug - Before model call - compound_graph_batch.edge_attr dtype: {compound_graph_batch.edge_attr.dtype}")
             ki_pred, *_ = self.model_ki(protein_data, compound_graph_batch, pocket_mask, compound_mask)
             ic50_pred, *_ = self.model_ic50(protein_data, compound_graph_batch, pocket_mask, compound_mask)
         
