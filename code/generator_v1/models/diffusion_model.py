@@ -56,16 +56,24 @@ class DiffusionScheduler:
         """Sample from q(x_t | x_0) - forward diffusion."""
         if noise is None:
             noise = torch.randn_like(x_start)
-            
-        sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod[t].reshape(-1, 1)
-        sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod[t].reshape(-1, 1)
+        
+        # Ensure all tensors are on the same device
+        device = x_start.device
+        t = t.to(device)
+        
+        sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod.to(device)[t].reshape(-1, 1)
+        sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod.to(device)[t].reshape(-1, 1)
         
         return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
         
     def predict_start_from_noise(self, x_t: torch.Tensor, t: torch.Tensor, noise: torch.Tensor) -> torch.Tensor:
         """Predict x_0 from x_t and predicted noise."""
-        sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod[t].reshape(-1, 1)
-        sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod[t].reshape(-1, 1)
+        # Ensure all tensors are on the same device
+        device = x_t.device
+        t = t.to(device)
+        
+        sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod.to(device)[t].reshape(-1, 1)
+        sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod.to(device)[t].reshape(-1, 1)
         
         return (x_t - sqrt_one_minus_alphas_cumprod_t * noise) / sqrt_alphas_cumprod_t
         
@@ -81,6 +89,17 @@ class DiffusionScheduler:
         posterior_variance = self.posterior_variance[t].reshape(-1, 1)
         
         return posterior_mean, posterior_variance
+    
+    def to(self, device):
+        """Move all tensors to the specified device."""
+        self.betas = self.betas.to(device)
+        self.alphas = self.alphas.to(device)
+        self.alphas_cumprod = self.alphas_cumprod.to(device)
+        self.alphas_cumprod_prev = self.alphas_cumprod_prev.to(device)
+        self.sqrt_alphas_cumprod = self.sqrt_alphas_cumprod.to(device)
+        self.sqrt_one_minus_alphas_cumprod = self.sqrt_one_minus_alphas_cumprod.to(device)
+        self.posterior_variance = self.posterior_variance.to(device)
+        return self
 
 
 class ProteinConditionedUNet(nn.Module):
@@ -401,3 +420,9 @@ class ProteinLigandDiffusion(nn.Module):
                 x = posterior_mean
                 
         return x
+    
+    def to(self, device):
+        """Move model and scheduler to device."""
+        super().to(device)
+        self.scheduler.to(device)
+        return self
