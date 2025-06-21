@@ -141,6 +141,42 @@ class ProteinLigandVectorDB:
         print(f"  ProtBERT strides: {protbert_emb.strides}")
         print(f"  Pseq2Sites strides: {pseq2sites_emb.strides}")
         print(f"  Compound strides: {compound_emb.strides}")
+        
+        # Critical: Test FAISS compatibility before building indices
+        print("Testing FAISS-GPU compatibility...")
+        try:
+            # Test with a simple L2 index first
+            test_index = faiss.IndexFlatL2(protbert_emb.shape[1])
+            test_sample = protbert_emb[:1].copy()  # Single sample for testing
+            test_index.add(test_sample)
+            print("✅ FAISS-GPU compatibility test passed!")
+            del test_index
+        except Exception as test_error:
+            print(f"❌ FAISS-GPU compatibility test failed: {test_error}")
+            print("Attempting array recreation from raw data...")
+            
+            # Last resort: completely recreate arrays from Python lists
+            print("Converting to Python lists and back to numpy...")
+            protbert_data = protbert_emb.tolist()
+            pseq2sites_data = pseq2sites_emb.tolist()
+            compound_data = compound_emb.tolist()
+            
+            # Create new arrays from scratch
+            protbert_emb = np.array(protbert_data, dtype=np.float32)
+            pseq2sites_emb = np.array(pseq2sites_data, dtype=np.float32)
+            compound_emb = np.array(compound_data, dtype=np.float32)
+            
+            # Ensure C-contiguous
+            protbert_emb = np.ascontiguousarray(protbert_emb)
+            pseq2sites_emb = np.ascontiguousarray(pseq2sites_emb)
+            compound_emb = np.ascontiguousarray(compound_emb)
+            
+            print("Re-testing FAISS compatibility...")
+            test_index = faiss.IndexFlatL2(protbert_emb.shape[1])
+            test_sample = protbert_emb[:1].copy()
+            test_index.add(test_sample)
+            print("✅ Array recreation successful!")
+            del test_index
         assert isinstance(protbert_emb, np.ndarray), f"ProtBERT is not numpy array: {type(protbert_emb)}"
         assert isinstance(pseq2sites_emb, np.ndarray), f"Pseq2Sites is not numpy array: {type(pseq2sites_emb)}"
         assert isinstance(compound_emb, np.ndarray), f"Compound is not numpy array: {type(compound_emb)}"
