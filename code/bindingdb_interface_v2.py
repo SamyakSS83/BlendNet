@@ -106,19 +106,16 @@ class BindingPredictor:
             atom_feats_list, edge_idx, edge_feats
         )
         
-        # Debug: Check the data types
-        # Convert to tensors - NOTE: Model expects FLOAT not LONG for atom features!
-        # This is because the pre-trained model was trained with float32 atom features
-        x = torch.tensor(atom_feats_list, dtype=torch.float32, device=self.device)  # Model expects float32
-        edge_index = edge_idx.clone().detach().to(device=self.device)  # Already torch.long from get_mol_features
-        edge_attr = edge_feats.clone().detach().to(dtype=torch.float32, device=self.device)  # Model expects float32
+        # Convert to tensors with correct dtypes for embedding layers (matching pre-processed data)
+        x = torch.tensor(atom_feats_list, dtype=torch.long, device=self.device)  # Match pre-processed: torch.int64
+        edge_index = edge_idx.clone().detach().to(device=self.device)  # Already torch.int64
+        edge_attr = edge_feats.clone().detach().to(device=self.device)  # Already torch.int64
         
         # Create PyTorch Geometric Data object
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=n_atoms)
         
         # Create batched data
         compound_graph_batch = Batch.from_data_list([data]).to(self.device)
-        print(f"Debug - After Batch creation - batch.x dtype: {compound_graph_batch.x.dtype}")
         
         # Create atom mask
         mask = torch.ones(n_atoms, dtype=torch.float32, device=self.device)
