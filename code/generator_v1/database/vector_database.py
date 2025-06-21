@@ -41,12 +41,19 @@ class ProteinLigandVectorDB:
         
     def build_index(self, data: Dict):
         """Build FAISS indices from preprocessed data."""
-        print("Building FAISS indices...")
+        print("="*50)
+        print("STARTING BUILD_INDEX METHOD")
+        print("="*50)
+        
+        # Debug: Check if data is properly passed
+        print(f"Data keys: {list(data.keys())}")
+        print(f"Data type: {type(data)}")
         
         # Extract data
         self.sequences = data['sequences']
         self.smiles = data['smiles']
         self.ic50_values = np.array(data['ic50_values'])
+        print(f"Extracted basic data: {len(self.sequences)} sequences, {len(self.smiles)} SMILES")
         
         # Debug: Check data types and shapes
         print(f"ProtBERT embeddings type: {type(data['protbert_embeddings'])}")
@@ -54,6 +61,7 @@ class ProteinLigandVectorDB:
         print(f"Compound embeddings type: {type(data['compound_embeddings'])}")
         
         # Convert embeddings to numpy arrays with error handling
+        print("Converting embeddings to numpy arrays...")
         try:
             protbert_emb = data['protbert_embeddings']
             if not isinstance(protbert_emb, np.ndarray):
@@ -67,14 +75,11 @@ class ProteinLigandVectorDB:
             pseq2sites_emb = pseq2sites_emb.astype('float32')
             print(f"Pseq2Sites shape: {pseq2sites_emb.shape}, dtype: {pseq2sites_emb.dtype}")
             
-            self.compound_embeddings = data['compound_embeddings']
-            if not isinstance(self.compound_embeddings, np.ndarray):
-                self.compound_embeddings = np.array(self.compound_embeddings)
-            self.compound_embeddings = self.compound_embeddings.astype('float32')
-            print(f"Compound shape: {self.compound_embeddings.shape}, dtype: {self.compound_embeddings.dtype}")
-            
-            # Use consistent variable name
-            compound_emb = self.compound_embeddings
+            compound_emb = data['compound_embeddings']
+            if not isinstance(compound_emb, np.ndarray):
+                compound_emb = np.array(compound_emb)
+            compound_emb = compound_emb.astype('float32')
+            print(f"Compound shape: {compound_emb.shape}, dtype: {compound_emb.dtype}")
             
         except Exception as e:
             print(f"Error converting embeddings to numpy arrays: {e}")
