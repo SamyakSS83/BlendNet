@@ -30,7 +30,7 @@ class BindingDBInterface:
         # Initialize ProtBERT for protein feature extraction
         print("Loading ProtBERT...")
         self.tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False)
-        self.protbert_model = BertModel.from_pretrained("Rostlab/prot_bert").to(self.device)
+        self.protbert_model = BertModel.from_pretrained("Rostlab/prot_bert", use_safetensors=True).to(self.device)
         self.protbert_model.eval()
         
         # Initialize Pseq2Sites for pocket prediction
