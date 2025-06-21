@@ -41,11 +41,13 @@ class BindingAffinityPredictor:
         )
 
         # load interaction models
-        self.ki_model   = BlendNetS(self.inter_cfg, self.inter_cfg, self.device)
+        ki_teacher_path = self.inter_cfg['Path']['Ki_interaction_site_predictor']
+        self.ki_model = BlendNetS(ki_teacher_path, self.inter_cfg, self.device)
         self.ki_model.load_state_dict(torch.load(ki_model_path, map_location=self.device))
         self.ki_model.eval()
 
-        self.ic50_model = BlendNetS(self.inter_cfg, self.inter_cfg, self.device)
+        ic50_teacher_path = self.inter_cfg['Path']['IC50_interaction_site_predictor']
+        self.ic50_model = BlendNetS(ic50_teacher_path, self.inter_cfg, self.device)
         self.ic50_model.load_state_dict(torch.load(ic50_model_path, map_location=self.device))
         self.ic50_model.eval()
 
