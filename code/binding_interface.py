@@ -7,28 +7,25 @@ from torch_geometric.data import Data
 from modules.common.utils import load_cfg
 from modules.interaction_modules.BDB_models import BlendNetS
 from modules.interaction_modules.BDB_loaders import pad_data
+from feature_generation.compound.Get_Mol_features import get_mol_features, remove_hydrogen
 from pseq2sites_interface import get_protein_matrix
 
 # --- build a little helper to turn a SMILES into the exact same PyG graph BlendNet uses ---
-def smiles_to_graph(smiles: str, compound_data: dict, device: torch.device):
-    # this assumes your compound_data dict (torch.load) has:
-    #   'mol_ids'       : list of string ids (we’ll pretend SMILES is the id)
-    #   'atom_features' : [N_atoms_total x D] tensor
-    #   'edge_indices'  : [2 x N_bonds_total] tensor
-    #   'edge_features' : [N_bonds_total x E] tensor
-    idx = compound_data['mol_ids'].index(smiles)
-    s, e = compound_data['atom_slices'][idx].item(), compound_data['atom_slices'][idx+1].item()
-    bs, be = compound_data['edge_slices'][idx].item(), compound_data['edge_slices'][idx+1].item()
-    n_atoms = compound_data['n_atoms'][idx].item()
-
-    x = compound_data['atom_features'][s:s+n_atoms].to(device)
-    edge_index = compound_data['edge_indices'][:, bs:be].to(device)
-    edge_attr = compound_data['edge_features'][bs:be].to(device)
-
+def smiles_to_graph(smiles: str, device: torch.device):
+    """
+    Parse a SMILES string via RDKit, build atom/edge features and return a PyG Data graph plus atom mask.
+    """
+    mol = Chem.MolFromSmiles(smiles)
+    atom_feats_list, edge_idx, edge_feats, _ = get_mol_features(mol)
+    # drop hydrogens if present
+    n_atoms, atom_feats_list, edge_feats, edge_idx, _ = remove_hydrogen(atom_feats_list, edge_idx, edge_feats)
+    # convert to tensors
+    x = torch.tensor(atom_feats_list, dtype=torch.float32, device=device)
+    edge_index = torch.tensor(edge_idx, dtype=torch.long, device=device)
+    edge_attr = torch.tensor(edge_feats, dtype=torch.float32, device=device)
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=n_atoms)
-    # mask = a 1‐vector for every atom
     mask = torch.ones(n_atoms, dtype=torch.float32, device=device)
-    return data, mask.unsqueeze(0)  # batch dims
+    return data, mask.unsqueeze(0)
 
 def prepare_protein(seq: str, device: torch.device):
     # use the Pseq2SitesClient under‐the‐hood to get per‐residue embeddings
@@ -44,7 +41,7 @@ def prepare_protein(seq: str, device: torch.device):
 cfg = load_cfg("BindingDB.yml")
 device = torch.device(f"cuda:{cfg['Train']['device']}") if torch.cuda.is_available() else torch.device("cpu")
 # load ligand graph via memory map to avoid full deserialization overhead
-compound_data = torch.load(cfg['Path']['Ligand_graph'], map_location='cpu', mmap_mode='r')
+compound_data = torch.load(cfg['Path']['Ligand_graph'], map_location='cpu')
 # instantiate models once
 model_ki = BlendNetS(cfg["Path"]["Ki_interaction_site_predictor"], cfg, device).to(device).eval()
 model_ic50 = BlendNetS(cfg["Path"]["IC50_interaction_site_predictor"], cfg, device).to(device).eval()
@@ -53,8 +50,8 @@ def predict(seq: str, smiles: str):
     # reuse globally loaded compound_data and models
      
     # build our single‐sample inputs
-    prot_feat, prot_mask   = prepare_protein(seq, device)
-    comp_graph, comp_mask = smiles_to_graph(smiles, compound_data, device)
+    prot_feat, prot_mask = prepare_protein(seq, device)
+    comp_graph, comp_mask = smiles_to_graph(smiles, device)
 
     # run
     with torch.no_grad():
