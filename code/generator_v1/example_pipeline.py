@@ -33,7 +33,7 @@ def run_complete_pipeline():
         },
         'preprocessing': {
             'output_dir': './preprocessed_data',
-            'max_samples': None,  # Use full dataset
+            'max_samples': 0,  # 0 means use full dataset
             'test_split': 0.2
         },
         'training': {
