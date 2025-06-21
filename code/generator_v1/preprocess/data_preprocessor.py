@@ -233,7 +233,8 @@ class DataPreprocessor:
             df = df.sample(n=max_samples, random_state=42).reset_index(drop=True)
         
         # Split by unique molecules
-        train_df, test_df = self.split_unique_molecules(df, test_split=test_split)
+        train_ratio = 1.0 - test_split
+        train_df, test_df = self.split_unique_molecules(df, train_ratio=train_ratio)
         
         # Create output directories
         os.makedirs(output_dir, exist_ok=True)
