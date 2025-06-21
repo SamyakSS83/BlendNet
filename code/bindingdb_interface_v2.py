@@ -106,10 +106,10 @@ class BindingPredictor:
             atom_feats_list, edge_idx, edge_feats
         )
         
-        # Convert to tensors
-        x = torch.tensor(atom_feats_list, dtype=torch.long, device=self.device)
-        edge_index = torch.tensor(edge_idx, dtype=torch.long, device=self.device)
-        edge_attr = torch.tensor(edge_feats, dtype=torch.float32, device=self.device)
+        # Convert to tensors with correct dtypes for embedding layers
+        x = torch.tensor(atom_feats_list, dtype=torch.long, device=self.device)  # Atom embedding expects Long
+        edge_index = edge_idx.clone().detach().to(device=self.device)  # Already torch.long from get_mol_features
+        edge_attr = edge_feats.clone().detach().to(device=self.device)  # Already torch.long from get_mol_features
         
         # Create PyTorch Geometric Data object
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=n_atoms)
