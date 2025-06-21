@@ -124,6 +124,11 @@ class BindingPredictor:
         
         # Create PyTorch Geometric Data object
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=n_atoms)
+        print(f"Debug - After Data creation - data.x dtype: {data.x.dtype}")
+        
+        # Create batched data
+        compound_graph_batch = Batch.from_data_list([data]).to(self.device)
+        print(f"Debug - After Batch creation - batch.x dtype: {compound_graph_batch.x.dtype}")
         
         # Create atom mask
         mask = torch.ones(n_atoms, dtype=torch.float32, device=self.device)
@@ -165,6 +170,8 @@ class BindingPredictor:
         
         # Make predictions
         with torch.no_grad():
+            print(f"Debug - Before model call - compound_graph_batch.x dtype: {compound_graph_batch.x.dtype}")
+            print(f"Debug - Before model call - compound_graph_batch.edge_attr dtype: {compound_graph_batch.edge_attr.dtype}")
             ki_pred, *_ = self.model_ki(protein_data, compound_graph_batch, pocket_mask, compound_mask)
             ic50_pred, *_ = self.model_ic50(protein_data, compound_graph_batch, pocket_mask, compound_mask)
         
