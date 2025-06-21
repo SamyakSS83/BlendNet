@@ -82,23 +82,31 @@ def run_complete_pipeline():
     print("STEP 2: VECTOR DATABASE CREATION")
     print("="*60)
     
-    from database.vector_database import build_database_from_preprocessed_data
-    
-    db_path = os.path.join(config['preprocessing']['output_dir'], 'vector_database')
+    # Use the fixed data and vector database that works with FAISS
+    fixed_data_path = os.path.join(config['preprocessing']['output_dir'], 'preprocessed_data_fixed.pkl')
+    db_path = os.path.join(config['preprocessing']['output_dir'], 'vector_database_fixed')
     
     if not os.path.exists(db_path):
         print("Building vector database...")
-        vector_db = build_database_from_preprocessed_data(
-            data_path=preprocess_output,
-            output_path=config['preprocessing']['output_dir'],
-            db_name='vector_database'
-        )
+        
+        # Check if we have fixed data, if not create it
+        if not os.path.exists(fixed_data_path):
+            print("Fixed data not found, creating it...")
+            # Run the fix script programmatically
+            exec(open('fix_preprocessing.py').read())
+        
+        # Build vector database using the fixed script
+        print("Building FAISS vector database...")
+        exec(open('database/vector_database_fixed.py').read())
+        
         print("Vector database built successfully!")
     else:
         print("Vector database found, loading...")
-        vector_db = ProteinLigandVectorDB()
-        vector_db.load_database(db_path)
-        print("Vector database loaded successfully!")
+    
+    # Load the vector database
+    vector_db = ProteinLigandVectorDB()
+    vector_db.load_database(db_path)
+    print("Vector database loaded successfully!")
     
     # Step 3: Model Training
     print("\\n" + "="*60)
@@ -111,7 +119,7 @@ def run_complete_pipeline():
         print("Training diffusion model...")
         
         trainer = DiffusionTrainer(
-            preprocessed_data_path=preprocess_output,
+            preprocessed_data_path=fixed_data_path,
             vector_db=vector_db,
             device=config['device']
         )
