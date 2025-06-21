@@ -52,7 +52,7 @@ class DataPreprocessor:
         # Initialize BindingDB interface for protein embeddings
         print("Loading BindingDB interface...")
         self.bindingdb_interface = BindingDBInterface(
-            config_path="../../BindingDB.yml",
+            config_path="../BindingDB.yml",
             ki_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
             ic50_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
             device=device
