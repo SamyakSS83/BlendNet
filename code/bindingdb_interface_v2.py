@@ -106,10 +106,21 @@ class BindingPredictor:
             atom_feats_list, edge_idx, edge_feats
         )
         
+        # Debug: Check the data types
+        print(f"Debug - atom_feats_list type: {type(atom_feats_list)}")
+        if len(atom_feats_list) > 0:
+            print(f"Debug - First atom features: {atom_feats_list[0]}")
+            print(f"Debug - First atom feature types: {[type(x) for x in atom_feats_list[0]]}")
+        
         # Convert to tensors with correct dtypes for embedding layers
         x = torch.tensor(atom_feats_list, dtype=torch.long, device=self.device)  # Atom embedding expects Long
+        print(f"Debug - x tensor dtype: {x.dtype}")
+        
         edge_index = edge_idx.clone().detach().to(device=self.device)  # Already torch.long from get_mol_features
         edge_attr = edge_feats.clone().detach().to(device=self.device)  # Already torch.long from get_mol_features
+        
+        print(f"Debug - edge_index dtype: {edge_index.dtype}")
+        print(f"Debug - edge_attr dtype: {edge_attr.dtype}")
         
         # Create PyTorch Geometric Data object
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=n_atoms)
