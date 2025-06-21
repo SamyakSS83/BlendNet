@@ -2,7 +2,10 @@
 """
 BlendNet Binding Affinity Prediction Interface - Simplified Version
 
-This script provides an efficient interface for predicting Ki and IC50 values
+This scri        # Convert to tensors with correct dtypes for embedding layers
+        x = torch.tensor(atom_feats_list, dtype=torch.long, device=self.device)  # Embedding expects Long
+        edge_index = edge_idx.clone().detach().to(dtype=torch.long, device=self.device)
+        edge_attr = torch.tensor(edge_feats, dtype=torch.long, device=self.device)  # Bond embedding expects Longrovides an efficient interface for predicting Ki and IC50 values
 from protein sequences and SMILES strings using pre-existing infrastructure.
 
 Uses the existing modules and pseq2sites_interface for protein processing.
