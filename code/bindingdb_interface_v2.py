@@ -107,24 +107,14 @@ class BindingPredictor:
         )
         
         # Debug: Check the data types
-        print(f"Debug - atom_feats_list type: {type(atom_feats_list)}")
-        if len(atom_feats_list) > 0:
-            print(f"Debug - First atom features: {atom_feats_list[0]}")
-            print(f"Debug - First atom feature types: {[type(x) for x in atom_feats_list[0]]}")
-        
-        # Convert to tensors with correct dtypes for embedding layers
-        x = torch.tensor(atom_feats_list, dtype=torch.long, device=self.device)  # Atom embedding expects Long
-        print(f"Debug - x tensor dtype: {x.dtype}")
-        
+        # Convert to tensors - NOTE: Model expects FLOAT not LONG for atom features!
+        # This is because the pre-trained model was trained with float32 atom features
+        x = torch.tensor(atom_feats_list, dtype=torch.float32, device=self.device)  # Model expects float32
         edge_index = edge_idx.clone().detach().to(device=self.device)  # Already torch.long from get_mol_features
-        edge_attr = edge_feats.clone().detach().to(device=self.device)  # Already torch.long from get_mol_features
-        
-        print(f"Debug - edge_index dtype: {edge_index.dtype}")
-        print(f"Debug - edge_attr dtype: {edge_attr.dtype}")
+        edge_attr = edge_feats.clone().detach().to(dtype=torch.float32, device=self.device)  # Model expects float32
         
         # Create PyTorch Geometric Data object
         data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, num_nodes=n_atoms)
-        print(f"Debug - After Data creation - data.x dtype: {data.x.dtype}")
         
         # Create batched data
         compound_graph_batch = Batch.from_data_list([data]).to(self.device)
