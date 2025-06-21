@@ -73,7 +73,7 @@ class DataPreprocessor:
         print(f"Sample data:\n{df.head()}")
         
         # Remove duplicates and filter valid data
-        df = df.dropna(subset=['SMILES', 'Sequence'])  # Adjust column names as needed
+        df = df.dropna(subset=['SMILES', 'Seqs'])  # Use correct column names
         df = df.drop_duplicates()
         
         print(f"After cleaning: {len(df)} records")
@@ -171,9 +171,9 @@ class DataPreprocessor:
         print("Creating vector database data...")
         
         # Extract unique protein-compound pairs
-        sequences = df['Sequence'].tolist()
+        sequences = df['Seqs'].tolist()  # Use correct column name
         smiles = df['SMILES'].tolist()
-        ic50_values = df['IC50'].tolist()  # Adjust column name as needed
+        ic50_values = df['Labels'].tolist()  # Use correct column name for IC50 values
         
         # Generate embeddings
         protbert_emb, pseq2sites_emb = self.generate_protein_embeddings(sequences)
@@ -207,6 +207,67 @@ class DataPreprocessor:
         print("Preprocessing completed!")
         return database_data
 
+    def preprocess_and_split(self, 
+                           output_dir: str = "./preprocessed_data",
+                           max_samples: int = -1,
+                           test_split: float = 0.2) -> Tuple[Dict, Dict]:
+        """
+        Complete preprocessing pipeline: load, split, and process data.
+        
+        Args:
+            output_dir: Directory to save preprocessed data
+            max_samples: Maximum number of samples to process (-1 for all)
+            test_split: Fraction for test split
+            
+        Returns:
+            Tuple of (train_data, test_data) dictionaries
+        """
+        print("Starting complete preprocessing pipeline...")
+        
+        # Load data
+        df = self.load_ic50_data()
+        
+        # Limit samples if specified
+        if max_samples > 0 and len(df) > max_samples:
+            print(f"Limiting to {max_samples} samples from {len(df)}")
+            df = df.sample(n=max_samples, random_state=42).reset_index(drop=True)
+        
+        # Split by unique molecules
+        train_df, test_df = self.split_unique_molecules(df, test_split=test_split)
+        
+        # Create output directories
+        os.makedirs(output_dir, exist_ok=True)
+        train_dir = os.path.join(output_dir, "train")
+        test_dir = os.path.join(output_dir, "test")
+        os.makedirs(train_dir, exist_ok=True)
+        os.makedirs(test_dir, exist_ok=True)
+        
+        # Process training data
+        print("\nProcessing training data...")
+        train_data = self.create_vector_database_data(train_df, train_dir)
+        
+        # Process test data
+        print("\nProcessing test data...")
+        test_data = self.create_vector_database_data(test_df, test_dir)
+        
+        # Also save combined data for vector database
+        combined_output = os.path.join(output_dir, "preprocessed_data.pkl")
+        print(f"Saving combined data to {combined_output}")
+        with open(combined_output, 'wb') as f:
+            pickle.dump({
+                'train_data': train_data,
+                'test_data': test_data,
+                'metadata': {
+                    'train_samples': len(train_df),
+                    'test_samples': len(test_df),
+                    'total_samples': len(df),
+                    'test_split': test_split,
+                    'max_samples': max_samples
+                }
+            }, f)
+        
+        print("Complete preprocessing pipeline finished!")
+        return train_data, test_data
 
 def main():
     """Main preprocessing pipeline."""
