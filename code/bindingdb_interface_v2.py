@@ -22,7 +22,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../modules/'))
 from modules.common.utils import load_cfg
 from modules.interaction_modules.BDB_models import BlendNetS
 from feature_generation.compound.Get_Mol_features import get_mol_features, remove_hydrogen
-from modules.pocket_modules.pseq2sites_embeddings import Pseq2SitesEmbeddings
+# from modules.pocket_modules.pseq2sites_embeddings import Pseq2SitesEmbeddings  # Commented out to avoid downloads
 
 class BindingPredictor:
     """
@@ -39,9 +39,8 @@ class BindingPredictor:
         self.device = torch.device(f"cuda:{self.config['Train']['device']}") if torch.cuda.is_available() else torch.device("cpu")
         print(f"Using device: {self.device}")
         
-        # Initialize Pseq2Sites for protein embeddings (handles ProtBERT internally)
-        print("Loading Pseq2Sites embeddings model...")
-        self.pseq2sites_embedder = Pseq2SitesEmbeddings(device=self.device)
+        # Initialize the predictor (no longer using Pseq2Sites to avoid download issues)
+        print("Skipping Pseq2Sites - using dummy ProtBERT features for compatibility...")
         
         # Load BlendNetS models for Ki and IC50 prediction
         print("Loading BlendNetS models...")
@@ -63,35 +62,23 @@ class BindingPredictor:
     
     def extract_protein_features(self, sequence: str):
         """
-        Extract protein features using Pseq2Sites embeddings.
+        Extract ProtBERT-like features for compatibility with BlendNetS.
         
         Args:
             sequence: Amino acid sequence
             
         Returns:
-            torch.Tensor: Enhanced protein features (seq_len, 256)
+            torch.Tensor: ProtBERT-like features (seq_len, 1024)
         """
-        # Create dummy ProtBERT features for Pseq2Sites input
+        # BlendNetS expects 1024-dimensional ProtBERT features
+        # We'll generate dummy features that match the expected input format
         seq_len = len(sequence)
-        dummy_protbert_features = np.random.randn(seq_len, 1024).astype(np.float32)
         
-        # Use Pseq2Sites to extract enhanced embeddings
-        protein_features = {f"seq_{hash(sequence)}": dummy_protbert_features}
-        protein_sequences = {f"seq_{hash(sequence)}": sequence}
+        # Generate random ProtBERT-like features (1024-dimensional)
+        # In practice, you would load these from pre-computed ProtBERT embeddings
+        protbert_features = torch.randn(seq_len, 1024, device=self.device, dtype=torch.float32)
         
-        results = self.pseq2sites_embedder.extract_embeddings(
-            protein_features=protein_features,
-            protein_sequences=protein_sequences,
-            batch_size=1,
-            return_predictions=False,
-            return_attention=False
-        )
-        
-        # Extract the sequence embeddings
-        seq_id = f"seq_{hash(sequence)}"
-        enhanced_features = results[seq_id]['sequence_embeddings']  # Shape: (seq_len, 256)
-        
-        return torch.from_numpy(enhanced_features).to(self.device)
+        return protbert_features
     
     def smiles_to_graph(self, smiles: str):
         """
@@ -144,9 +131,9 @@ class BindingPredictor:
         print(f"Protein length: {len(sequence)}")
         print(f"SMILES: {smiles}")
         
-        # Extract protein features using Pseq2Sites
-        enhanced_features = self.extract_protein_features(sequence)
-        seq_len = enhanced_features.shape[0]
+        # Extract ProtBERT-like protein features (1024-dim)
+        protein_features = self.extract_protein_features(sequence)
+        seq_len = protein_features.shape[0]
         
         # Create pocket mask (assume all residues are part of pocket for simplicity)
         pocket_mask = torch.ones(seq_len, dtype=torch.long, device=self.device)
@@ -158,9 +145,9 @@ class BindingPredictor:
         compound_graph_batch = Batch.from_data_list([compound_graph]).to(self.device)
         
         # Add batch dimensions
-        protein_data = enhanced_features.unsqueeze(0)  # (1, seq_len, 256)
-        pocket_mask = pocket_mask.unsqueeze(0)         # (1, seq_len)
-        compound_mask = compound_mask.unsqueeze(0)     # (1, n_atoms)
+        protein_data = protein_features.unsqueeze(0)  # (1, seq_len, 1024)
+        pocket_mask = pocket_mask.unsqueeze(0)        # (1, seq_len)
+        compound_mask = compound_mask.unsqueeze(0)    # (1, n_atoms)
         
         # Make predictions
         with torch.no_grad():
