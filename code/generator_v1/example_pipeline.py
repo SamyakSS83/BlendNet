@@ -10,7 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 from preprocess.data_preprocessor import DataPreprocessor
-from database.vector_database import ProteinLigandVectorDB
+from database.vector_database_fixed import ProteinLigandVectorDB, build_database_from_preprocessed_data
 from training.train_diffusion import DiffusionTrainer
 from inference.ligand_generator import LigandGenerator
 from evaluation.metrics import evaluate_ligand_generation
@@ -95,18 +95,19 @@ def run_complete_pipeline():
             # Run the fix script programmatically
             exec(open('fix_preprocessing.py').read())
         
-        # Build vector database using the fixed script
+        # Build vector database using the fixed components
         print("Building FAISS vector database...")
-        exec(open('database/vector_database_fixed.py').read())
-        
+        vector_db = build_database_from_preprocessed_data(
+            data_path=fixed_data_path,
+            output_path=config['preprocessing']['output_dir'],
+            db_name='vector_database_fixed'
+        )
         print("Vector database built successfully!")
     else:
         print("Vector database found, loading...")
-    
-    # Load the vector database
-    vector_db = ProteinLigandVectorDB()
-    vector_db.load_database(db_path)
-    print("Vector database loaded successfully!")
+        vector_db = ProteinLigandVectorDB()
+        vector_db.load_database(db_path)
+        print("Vector database loaded successfully!")
     
     # Step 3: Model Training
     print("\\n" + "="*60)
@@ -230,7 +231,7 @@ def run_quick_example():
         # Load pre-trained model and database
         generator = LigandGenerator(
             diffusion_checkpoint='./trained_models/diffusion_model.pth',
-            vector_db_path='./preprocessed_data/vector_database',
+            vector_db_path='./preprocessed_data/vector_database_fixed',
             device='cuda' if torch.cuda.is_available() else 'cpu'
         )
         
