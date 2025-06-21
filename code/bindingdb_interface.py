@@ -33,13 +33,13 @@ class BindingDBInterface:
         # load Ki model
         ki_teacher = self.cfg['Path']['Ki_interaction_site_predictor']
         self.ki_model = BlendNetS(ki_teacher, self.cfg, self.device).to(self.device)
-        self.ki_model.load_state_dict(torch.load(ki_weights, map_location=self.device))
+        self.ki_model.load_state_dict(torch.load(ki_weights, map_location=self.device, weights_only=False))
         self.ki_model.eval()
 
         # load IC50 model
         ic50_teacher = self.cfg['Path']['IC50_interaction_site_predictor']
         self.ic50_model = BlendNetS(ic50_teacher, self.cfg, self.device).to(self.device)
-        self.ic50_model.load_state_dict(torch.load(ic50_weights, map_location=self.device))
+        self.ic50_model.load_state_dict(torch.load(ic50_weights, map_location=self.device, weights_only=False))
         self.ic50_model.eval()
 
     def _prepare_sample(self, smiles: str, protein_id: str):
@@ -53,7 +53,8 @@ class BindingDBInterface:
             raise ValueError(f"Invalid SMILES: {smiles}")
         atom_feats, edge_index, edge_feats, _ = get_mol_features(mol)
         graph = Data(
-            x=torch.tensor(atom_feats, dtype=torch.float32, device=self.device),
+            # atom feature indices must be long for embedding layers
+            x=torch.tensor(atom_feats, dtype=torch.long, device=self.device),
             edge_index=edge_index.to(self.device),
             edge_attr=edge_feats.to(self.device),
             num_nodes=len(atom_feats)
@@ -76,10 +77,29 @@ class BindingDBInterface:
         (resi_feat, _), comp_batch, _, pocket_mask, comp_mask = pad_data([sample])
         print(resi_feat,comp_batch,pocket_mask,comp_mask)
         with torch.no_grad():
-            # ki_pred, *_ = self.ki_model(resi_feat, comp_batch, pocket_mask, comp_mask)
-            ic50_pred, *_ = self.ic50_model(resi_feat, comp_batch, pocket_mask, comp_mask)
+            # Debug: check tensor types
+            print(f"comp_batch.x dtype: {comp_batch.x.dtype}")
+            print(f"comp_batch.edge_attr dtype: {comp_batch.edge_attr.dtype}")
+            
+            # Ensure compound graph tensors are correct type and create copies for each model
+            comp_batch.x = comp_batch.x.long()
+            comp_batch.edge_attr = comp_batch.edge_attr.long()
+            
+            # Create a deep copy for Ki model to avoid in-place modifications
+            import copy
+            comp_batch_ki = copy.deepcopy(comp_batch)
+            comp_batch_ic50 = copy.deepcopy(comp_batch)
+            
+            # Try Ki model first with fresh copy
+            ki_pred, *_ = self.ki_model(resi_feat, comp_batch_ki, pocket_mask, comp_mask)
+            print("Ki prediction successful")
+            
+            # Try IC50 with its own copy
+            ic50_pred, *_ = self.ic50_model(resi_feat, comp_batch_ic50, pocket_mask, comp_mask)
+            print("IC50 prediction successful")
+            
         return {
-            # 'Ki': float(ki_pred.cpu().item()),
+            'Ki': float(ki_pred.cpu().item()),
             'IC50': float(ic50_pred.cpu().item())
         }
 
