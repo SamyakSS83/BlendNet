@@ -16,15 +16,28 @@ def load_smi_ted_model():
     try:
         from load import load_smi_ted
         
-        # Use the correct checkpoint path
-        checkpoint_path = '../../materials.smi-ted/smi-ted/inference/smi_ted_light/smi-ted-Light_40.pt'
+        # Use separate folder and checkpoint filename like the original preprocessor
+        smi_ted_folder = '../../materials.smi-ted/smi-ted/inference/smi_ted_light'
+        smi_ted_ckpt = 'smi-ted-Light_40.pt'
         
-        print(f"Loading smi-TED from: {checkpoint_path}")
-        if not os.path.exists(checkpoint_path):
-            print(f"❌ Checkpoint not found: {checkpoint_path}")
+        # Verify files exist
+        vocab_file = os.path.join(smi_ted_folder, 'bert_vocab_curated.txt')
+        checkpoint_file = os.path.join(smi_ted_folder, smi_ted_ckpt)
+        
+        print(f"Loading smi-TED from folder: {smi_ted_folder}")
+        print(f"Checkpoint: {smi_ted_ckpt}")
+        print(f"Checking vocab file: {vocab_file}")
+        print(f"Checking checkpoint file: {checkpoint_file}")
+        
+        if not os.path.exists(vocab_file):
+            print(f"❌ Vocabulary file not found: {vocab_file}")
+            return None
+        if not os.path.exists(checkpoint_file):
+            print(f"❌ Checkpoint file not found: {checkpoint_file}")
             return None
             
-        model = load_smi_ted(checkpoint_path)
+        # Load using folder and filename separately (like the original preprocessor)
+        model = load_smi_ted(folder=smi_ted_folder, ckpt_filename=smi_ted_ckpt)
         print("✅ smi-TED model loaded successfully")
         return model
         
