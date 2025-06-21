@@ -104,7 +104,7 @@ class BindingPredictor:
         )
         
         # Convert to tensors
-        x = torch.tensor(atom_feats_list, dtype=torch.float32, device=self.device)
+        x = torch.tensor(atom_feats_list, dtype=torch.long, device=self.device)
         edge_index = torch.tensor(edge_idx, dtype=torch.long, device=self.device)
         edge_attr = torch.tensor(edge_feats, dtype=torch.float32, device=self.device)
         
