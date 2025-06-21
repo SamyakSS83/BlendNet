@@ -74,15 +74,16 @@ class BindingDBInterface:
         sample = self._prepare_sample(smiles, protein_id)
         # pad single sample into batch
         (resi_feat, _), comp_batch, _, pocket_mask, comp_mask = pad_data([sample])
+        print(resi_feat,comp_batch,pocket_mask,comp_mask)
         with torch.no_grad():
-            ki_pred, *_ = self.ki_model(resi_feat, comp_batch, pocket_mask, comp_mask)
+            # ki_pred, *_ = self.ki_model(resi_feat, comp_batch, pocket_mask, comp_mask)
             ic50_pred, *_ = self.ic50_model(resi_feat, comp_batch, pocket_mask, comp_mask)
         return {
-            'Ki': float(ki_pred.cpu().item()),
+            # 'Ki': float(ki_pred.cpu().item()),
             'IC50': float(ic50_pred.cpu().item())
         }
 
-from bindingdb_interface import BindingDBInterface
+# from bindingdb_interface import BindingDBInterface
 
 iface = BindingDBInterface(
     config_path="BindingDB.yml",
@@ -91,5 +92,5 @@ iface = BindingDBInterface(
     device="cuda:0"
 )
 
-out = iface.predict("CCO", "P12345")
+out = iface.predict("CCO", "O00408")
 print(out)  # {'Ki': ..., 'IC50': ...}
