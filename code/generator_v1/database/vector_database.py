@@ -187,16 +187,31 @@ class ProteinLigandVectorDB:
 
 def build_database_from_preprocessed_data(data_path: str, 
                                          output_path: str,
-                                         db_name: str = "vector_db"):
+                                         db_name: str = "vector_db",
+                                         use_train_data: bool = True):
     """Build and save vector database from preprocessed data."""
     
     # Load preprocessed data
     print(f"Loading preprocessed data from {data_path}")
     with open(data_path, 'rb') as f:
-        data = pickle.load(f)
+        loaded_data = pickle.load(f)
+    
+    # Handle different data structures
+    if 'train_data' in loaded_data and 'test_data' in loaded_data:
+        # New format with train/test split
+        if use_train_data:
+            data = loaded_data['train_data']
+            print("Using training data for vector database")
+        else:
+            data = loaded_data['test_data']
+            print("Using test data for vector database")
+        metadata = data['metadata']
+    else:
+        # Old format - direct data structure
+        data = loaded_data
+        metadata = data['metadata']
         
     # Initialize database
-    metadata = data['metadata']
     db = ProteinLigandVectorDB(
         protbert_dim=metadata['protbert_dim'],
         pseq2sites_dim=metadata['pseq2sites_dim'],

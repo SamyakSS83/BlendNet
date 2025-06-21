@@ -82,18 +82,21 @@ def run_complete_pipeline():
     print("STEP 2: VECTOR DATABASE CREATION")
     print("="*60)
     
-    vector_db = ProteinLigandVectorDB()
+    from database.vector_database import build_database_from_preprocessed_data
+    
     db_path = os.path.join(config['preprocessing']['output_dir'], 'vector_database')
     
     if not os.path.exists(db_path):
         print("Building vector database...")
-        vector_db.build_database(
-            preprocessed_data_path=preprocess_output,
-            output_dir=db_path
+        vector_db = build_database_from_preprocessed_data(
+            data_path=preprocess_output,
+            output_path=config['preprocessing']['output_dir'],
+            db_name='vector_database'
         )
         print("Vector database built successfully!")
     else:
         print("Vector database found, loading...")
+        vector_db = ProteinLigandVectorDB()
         vector_db.load_database(db_path)
         print("Vector database loaded successfully!")
     
