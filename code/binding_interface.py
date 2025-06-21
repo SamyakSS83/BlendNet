@@ -40,17 +40,18 @@ def prepare_protein(seq: str, device: torch.device):
     mask = torch.ones(len(seq), device=device)        # (L,)
     return prot.unsqueeze(0), mask.unsqueeze(0)       # add batch dim
 
+# Move config, device, compound_data and models to module scope to load once
+cfg = load_cfg("BindingDB.yml")
+device = torch.device(f"cuda:{cfg['Train']['device']}") if torch.cuda.is_available() else torch.device("cpu")
+# load ligand graph via memory map to avoid full deserialization overhead
+compound_data = torch.load(cfg['Path']['Ligand_graph'], map_location='cpu', mmap_mode='r')
+# instantiate models once
+model_ki = BlendNetS(cfg["Path"]["Ki_interaction_site_predictor"], cfg, device).to(device).eval()
+model_ic50 = BlendNetS(cfg["Path"]["IC50_interaction_site_predictor"], cfg, device).to(device).eval()
+
 def predict(seq: str, smiles: str):
-    cfg = load_cfg("BindingDB.yml")
-    device = torch.device(f"cuda:{cfg['Train']['device']}") if torch.cuda.is_available() else torch.device("cpu")
-
-    # load compound‐graph file once
-    compound_data = torch.load(cfg['Path']['Ligand_graph'])
-
-    # load both BlendNetS models
-    model_ki    = BlendNetS(cfg["Path"]["Ki_interaction_site_predictor"],    cfg, device).to(device).eval()
-    model_ic50 = BlendNetS(cfg["Path"]["IC50_interaction_site_predictor"], cfg, device).to(device).eval()
-
+    # reuse globally loaded compound_data and models
+     
     # build our single‐sample inputs
     prot_feat, prot_mask   = prepare_protein(seq, device)
     comp_graph, comp_mask = smiles_to_graph(smiles, compound_data, device)
