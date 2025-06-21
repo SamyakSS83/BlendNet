@@ -17,7 +17,7 @@ def load_smi_ted_model():
         from load import load_smi_ted
         
         # Use the correct checkpoint path
-        checkpoint_path = '../../materials.smi-ted/smi-ted-Light_40.pt'
+        checkpoint_path = '../../materials.smi-ted/smi-ted/inference/smi_ted_light/smi-ted-Light_40.pt'
         
         print(f"Loading smi-TED from: {checkpoint_path}")
         if not os.path.exists(checkpoint_path):
