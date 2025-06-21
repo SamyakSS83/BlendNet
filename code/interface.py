@@ -3,6 +3,7 @@
 import torch
 import rdkit.Chem as Chem
 import numpy as np
+import pickle
 from modules.pocket_modules.loaders import PocketDataset
 from modules.compound_modules.loaders import MoleculeGraphDataset, graph_collate
 from modules.interaction_modules.BDB_models import BlendNetS
