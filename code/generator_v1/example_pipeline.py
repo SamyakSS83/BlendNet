@@ -59,8 +59,6 @@ def run_complete_pipeline():
     
     preprocessor = DataPreprocessor(
         ic50_data_path=config['data_paths']['ic50_data'],
-        smi_ted_path=config['data_paths']['smi_ted_path'],
-        smi_ted_ckpt=config['data_paths']['smi_ted_ckpt'],
         device=config['device']
     )
     

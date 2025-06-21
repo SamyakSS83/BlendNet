@@ -33,7 +33,7 @@ class DataPreprocessor:
     
     def __init__(self, 
                  ic50_data_path: str,
-                 smi_ted_path: str = "../../../materials.smi-ted/smi-ted/inference/smi_ted_light",
+                 smi_ted_path: str = None,
                  smi_ted_ckpt: str = "smi-ted-Light_40.pt",
                  device: str = "cuda:0"):
         """
@@ -50,12 +50,45 @@ class DataPreprocessor:
         
         print("Loading models...")
         
+        # Set default smi-TED path if not provided
+        if smi_ted_path is None:
+            # Get absolute path relative to the project root
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+            smi_ted_path = os.path.join(project_root, 'materials.smi-ted', 'smi-ted', 'inference', 'smi_ted_light')
+        
+        # Ensure smi-TED path is absolute
+        if not os.path.isabs(smi_ted_path):
+            smi_ted_path = os.path.abspath(smi_ted_path)
+        
+        print(f"Using smi-TED path: {smi_ted_path}")
+        
+        # Verify smi-TED files exist
+        vocab_file = os.path.join(smi_ted_path, 'bert_vocab_curated.txt')
+        checkpoint_file = os.path.join(smi_ted_path, smi_ted_ckpt)
+        
+        if not os.path.exists(vocab_file):
+            raise FileNotFoundError(f"smi-TED vocabulary file not found: {vocab_file}")
+        if not os.path.exists(checkpoint_file):
+            raise FileNotFoundError(f"smi-TED checkpoint file not found: {checkpoint_file}")
+        
         # Load smi-TED for compound encoding
         print("Loading smi-TED...")
         self.smi_ted = load_smi_ted(
             folder=smi_ted_path,
             ckpt_filename=smi_ted_ckpt
         )
+        
+        # Initialize ProtBERT for protein feature extraction
+        print("Loading ProtBERT...")
+        from transformers import BertModel, BertTokenizer
+        self.tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False)
+        self.protbert_model = BertModel.from_pretrained("Rostlab/prot_bert", use_safetensors=True).to(self.device)
+        self.protbert_model.eval()
+        
+        # Initialize Pseq2Sites for pocket prediction
+        print("Loading Pseq2Sites...")
+        from modules.pocket_modules.pseq2sites_embeddings import Pseq2SitesEmbeddings
+        self.pseq2sites = Pseq2SitesEmbeddings(device=self.device)
         
         print("Models loaded successfully!")
         
