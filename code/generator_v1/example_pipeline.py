@@ -33,20 +33,20 @@ def run_complete_pipeline():
         },
         'preprocessing': {
             'output_dir': './preprocessed_data',
-            'max_samples': 10000,  # Limit for example
+            'max_samples': None,  # Use full dataset
             'test_split': 0.2
         },
         'training': {
             'output_dir': './trained_models',
-            'num_epochs': 10,  # Reduced for example
-            'batch_size': 32,
+            'num_epochs': 50,  # Full training
+            'batch_size': 16,   # Reduced for memory efficiency
             'learning_rate': 1e-4,
             'lambda_ic50': 0.1
         },
         'inference': {
-            'num_samples': 5,
-            'top_k_retrieve': 10,
-            'num_inference_steps': 20  # Reduced for speed
+            'num_samples': 10,   # More samples for evaluation
+            'top_k_retrieve': 20,
+            'num_inference_steps': 50  # Full inference steps
         },
         'device': 'cuda' if torch.cuda.is_available() else 'cpu'
     }
@@ -58,57 +58,100 @@ def run_complete_pipeline():
     print("STEP 1: DATA PREPROCESSING")
     print("="*60)
     
-    preprocessor = DataPreprocessor(
-        ic50_data_path=config['data_paths']['ic50_data'],
-        device=config['device']
-    )
+    # Check if we have the fixed preprocessed data
+    fixed_data_path = os.path.join(config['preprocessing']['output_dir'], 'preprocessed_data_fixed.pkl')
     
-    # Check if preprocessed data exists
-    preprocess_output = os.path.join(config['preprocessing']['output_dir'], 'preprocessed_data.pkl')
-    
-    if not os.path.exists(preprocess_output):
-        print("Preprocessing data...")
-        train_data, val_data = preprocessor.preprocess_and_split(
-            output_dir=config['preprocessing']['output_dir'],
-            max_samples=config['preprocessing']['max_samples'],
-            test_split=config['preprocessing']['test_split']
-        )
-        print(f"Training samples: {len(train_data)}")
-        print(f"Validation samples: {len(val_data)}")
+    if os.path.exists(fixed_data_path):
+        print("✅ Found fixed preprocessed data, skipping preprocessing.")
+        print(f"Using: {fixed_data_path}")
+        
+        # Verify the fixed data has correct dimensions
+        with open(fixed_data_path, 'rb') as f:
+            data_check = pickle.load(f)
+        
+        train_compound_dim = data_check['train_data']['compound_embeddings'].shape[1]
+        test_compound_dim = data_check['test_data']['compound_embeddings'].shape[1]
+        
+        print(f"Data verification:")
+        print(f"  Train samples: {len(data_check['train_data']['sequences'])}")
+        print(f"  Test samples: {len(data_check['test_data']['sequences'])}")
+        print(f"  Train compound dim: {train_compound_dim}")
+        print(f"  Test compound dim: {test_compound_dim}")
+        
+        if train_compound_dim == test_compound_dim == 768:
+            print("✅ Data dimensions are correct!")
+        else:
+            print(f"❌ Data dimensions are incorrect: train={train_compound_dim}, test={test_compound_dim}")
+            print("Please run the compound embedding fix script first.")
+            return None
+            
     else:
-        print("Preprocessed data found, skipping preprocessing.")
+        print("No fixed preprocessed data found. Starting full preprocessing...")
+        
+        preprocessor = DataPreprocessor(
+            ic50_data_path=config['data_paths']['ic50_data'],
+            device=config['device']
+        )
+        
+        # Check if basic preprocessed data exists
+        preprocess_output = os.path.join(config['preprocessing']['output_dir'], 'preprocessed_data.pkl')
+        
+        if not os.path.exists(preprocess_output):
+            print("Preprocessing data from scratch...")
+            train_data, val_data = preprocessor.preprocess_and_split(
+                output_dir=config['preprocessing']['output_dir'],
+                max_samples=config['preprocessing']['max_samples'],
+                test_split=config['preprocessing']['test_split']
+            )
+            print(f"Training samples: {len(train_data)}")
+            print(f"Validation samples: {len(val_data)}")
+        else:
+            print("Basic preprocessed data exists, but need to fix compound embeddings.")
+            
+        print("❌ You need to run the compound embedding fix script first:")
+        print("  python fix_compound_embeddings_v2.py")
+        return None
     
     # Step 2: Vector Database Creation
     print("\\n" + "="*60)
     print("STEP 2: VECTOR DATABASE CREATION")
     print("="*60)
     
-    # Use the fixed data and vector database that works with FAISS
+    # Use the fixed data and vector database
     fixed_data_path = os.path.join(config['preprocessing']['output_dir'], 'preprocessed_data_fixed.pkl')
     db_path = os.path.join(config['preprocessing']['output_dir'], 'vector_database_fixed')
     
     if not os.path.exists(db_path):
         print("Building vector database...")
         
-        # Check if we have fixed data, if not create it
         if not os.path.exists(fixed_data_path):
-            print("Fixed data not found, creating it...")
-            # Run the fix script programmatically
-            exec(open('fix_preprocessing.py').read())
+            print("❌ Fixed preprocessed data not found!")
+            print("Please run: python fix_compound_embeddings_v2.py")
+            return None
         
-        # Build vector database using the fixed components
+        # Build vector database using the fixed data
         print("Building FAISS vector database...")
         vector_db = build_database_from_preprocessed_data(
             data_path=fixed_data_path,
             output_path=config['preprocessing']['output_dir'],
             db_name='vector_database_fixed'
         )
-        print("Vector database built successfully!")
+        print("✅ Vector database built successfully!")
     else:
-        print("Vector database found, loading...")
+        print("✅ Vector database found, loading...")
         vector_db = ProteinLigandVectorDB()
         vector_db.load_database(db_path)
-        print("Vector database loaded successfully!")
+        print("✅ Vector database loaded successfully!")
+        
+        # Test the database
+        print("Testing vector database...")
+        try:
+            # Test retrieval with a simple query
+            test_results = vector_db.retrieve_similar_ligands("test query", top_k=5)
+            print(f"✅ Database test successful: retrieved {len(test_results)} results")
+        except Exception as e:
+            print(f"⚠️  Database test warning: {e}")
+            print("Database may work but encountered an issue during testing")
     
     # Step 3: Model Training
     print("\\n" + "="*60)
@@ -124,16 +167,31 @@ def run_complete_pipeline():
         with open(fixed_data_path, 'rb') as f:
             full_data = pickle.load(f)
         
-        # Create training configuration
+        print(f"✅ Loaded data:")
+        print(f"  Train samples: {len(full_data['train_data']['sequences'])}")
+        print(f"  Test samples: {len(full_data['test_data']['sequences'])}")
+        
+        # Verify data dimensions one more time before training
+        train_compound_dim = full_data['train_data']['compound_embeddings'].shape[1]
+        test_compound_dim = full_data['test_data']['compound_embeddings'].shape[1]
+        
+        if train_compound_dim != 768 or test_compound_dim != 768:
+            print(f"❌ Invalid compound dimensions: train={train_compound_dim}, test={test_compound_dim}")
+            print("Expected 768 for both. Please fix the data first.")
+            return None
+        
+        print("✅ All embedding dimensions verified (768)")
+        
+        # Create training configuration for full dataset
         training_config = {
             # Model parameters
-            'compound_dim': 768,  # smi-TED dimension
+            'compound_dim': 768,  # smi-TED dimension (verified)
             'protbert_dim': 1024,
             'pseq2sites_dim': 256,
-            'hidden_dim': 256,  # Reduced for faster training
-            'num_layers': 4,    # Reduced for faster training
+            'hidden_dim': 512,    # Increased for full training
+            'num_layers': 8,      # Increased for better capacity
             'dropout': 0.1,
-            'num_timesteps': 100,  # Reduced for faster training
+            'num_timesteps': 1000,  # Full diffusion timesteps
             
             # Training parameters
             'batch_size': config['training']['batch_size'],
@@ -141,21 +199,21 @@ def run_complete_pipeline():
             'weight_decay': 1e-5,
             'num_epochs': config['training']['num_epochs'],
             'max_grad_norm': 1.0,
-            'num_workers': 2,  # Reduced for stability
+            'num_workers': 4,  # Increased for full training
             
             # Loss weights
             'diffusion_weight': 1.0,
             'ic50_weight': config['training']['lambda_ic50'],
             'use_ic50_regularization': True,
-            'ic50_regularization_freq': 5,
+            'ic50_regularization_freq': 10,  # Less frequent for stability
             
             # Checkpointing
             'checkpoint_dir': config['training']['output_dir'],
-            'save_freq': max(1, config['training']['num_epochs'] // 2),
+            'save_freq': max(1, config['training']['num_epochs'] // 5),  # Save every 20% of epochs
             
             # Logging
-            'use_wandb': False,  # Disable for example
-            'project_name': 'protein-ligand-diffusion-example'
+            'use_wandb': False,
+            'project_name': 'protein-ligand-diffusion-full'
         }
         
         # Create datasets from the fixed data
