@@ -52,12 +52,42 @@ class DataPreprocessor:
         
         # Set default smi-TED path if not provided
         if smi_ted_path is None:
-            # Get absolute path relative to the project root
-            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
-            smi_ted_path = os.path.join(project_root, 'materials.smi-ted', 'smi-ted', 'inference', 'smi_ted_light')
-        
-        # Ensure smi-TED path is absolute
-        if not os.path.isabs(smi_ted_path):
+            # Try multiple possible paths for smi-TED
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            possible_paths = [
+                # From your terminal output - this should work
+                '../../materials.smi-ted/smi-ted/inference/smi_ted_light',
+                # Original path structure
+                os.path.join(current_dir, '../../../../materials.smi-ted/smi-ted/inference/smi_ted_light'),
+                # Alternative path structure (for your current setup)
+                os.path.join(current_dir, '../../../materials.smi-ted/smi-ted/inference/smi_ted_light'),
+                # Another alternative
+                os.path.join(current_dir, '../../materials.smi-ted/smi-ted/inference/smi_ted_light'),
+                # Direct relative path from working directory
+                './materials.smi-ted/smi-ted/inference/smi_ted_light',
+                '../materials.smi-ted/smi-ted/inference/smi_ted_light',
+                # Absolute paths based on your workspace
+                '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light',
+                '/home/sarvesh/scratch/GS/samyak/.Blendnet/materials.smi-ted/smi-ted/inference/smi_ted_light'
+            ]
+            
+            smi_ted_path = None
+            for path in possible_paths:
+                abs_path = os.path.abspath(path)
+                vocab_test = os.path.join(abs_path, 'bert_vocab_curated.txt')
+                if os.path.exists(vocab_test):
+                    smi_ted_path = abs_path
+                    print(f"Found smi-TED at: {smi_ted_path}")
+                    break
+            
+            if smi_ted_path is None:
+                raise FileNotFoundError(
+                    f"Could not find smi-TED directory. Tried paths:\n" + 
+                    "\n".join([f"  - {os.path.abspath(p)}" for p in possible_paths]) +
+                    "\n\nPlease provide the correct path using smi_ted_path parameter."
+                )
+        else:
+            # Ensure smi-TED path is absolute and resolve any relative components
             smi_ted_path = os.path.abspath(smi_ted_path)
         
         print(f"Using smi-TED path: {smi_ted_path}")
@@ -66,10 +96,15 @@ class DataPreprocessor:
         vocab_file = os.path.join(smi_ted_path, 'bert_vocab_curated.txt')
         checkpoint_file = os.path.join(smi_ted_path, smi_ted_ckpt)
         
+        print(f"Checking vocab file: {vocab_file}")
+        print(f"Checking checkpoint file: {checkpoint_file}")
+        
         if not os.path.exists(vocab_file):
             raise FileNotFoundError(f"smi-TED vocabulary file not found: {vocab_file}")
         if not os.path.exists(checkpoint_file):
             raise FileNotFoundError(f"smi-TED checkpoint file not found: {checkpoint_file}")
+        
+        print("smi-TED files verified!")
         
         # Load smi-TED for compound encoding
         print("Loading smi-TED...")
