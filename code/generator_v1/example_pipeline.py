@@ -4,6 +4,7 @@ Example script demonstrating the complete protein-ligand diffusion pipeline.
 import os
 import sys
 import torch
+import pickle
 
 # Add paths
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
@@ -11,7 +12,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 from preprocess.data_preprocessor import DataPreprocessor
 from database.vector_database_fixed import ProteinLigandVectorDB, build_database_from_preprocessed_data
-from training.train_diffusion import DiffusionTrainer
+from training.train_diffusion import DiffusionTrainer, ProteinLigandDataset
 from inference.ligand_generator import LigandGenerator
 from evaluation.metrics import evaluate_ligand_generation
 
@@ -119,19 +120,73 @@ def run_complete_pipeline():
     if not os.path.exists(model_checkpoint):
         print("Training diffusion model...")
         
+        # Load datasets for training
+        with open(fixed_data_path, 'rb') as f:
+            full_data = pickle.load(f)
+        
+        # Create training configuration
+        training_config = {
+            # Model parameters
+            'compound_dim': 768,  # smi-TED dimension
+            'protbert_dim': 1024,
+            'pseq2sites_dim': 256,
+            'hidden_dim': 256,  # Reduced for faster training
+            'num_layers': 4,    # Reduced for faster training
+            'dropout': 0.1,
+            'num_timesteps': 100,  # Reduced for faster training
+            
+            # Training parameters
+            'batch_size': config['training']['batch_size'],
+            'learning_rate': config['training']['learning_rate'],
+            'weight_decay': 1e-5,
+            'num_epochs': config['training']['num_epochs'],
+            'max_grad_norm': 1.0,
+            'num_workers': 2,  # Reduced for stability
+            
+            # Loss weights
+            'diffusion_weight': 1.0,
+            'ic50_weight': config['training']['lambda_ic50'],
+            'use_ic50_regularization': True,
+            'ic50_regularization_freq': 5,
+            
+            # Checkpointing
+            'checkpoint_dir': config['training']['output_dir'],
+            'save_freq': max(1, config['training']['num_epochs'] // 2),
+            
+            # Logging
+            'use_wandb': False,  # Disable for example
+            'project_name': 'protein-ligand-diffusion-example'
+        }
+        
+        # Create datasets from the fixed data
+        print("Creating training and validation datasets...")
+        train_data = full_data['train_data']
+        val_data = full_data['test_data']
+        
+        # Save temporary dataset files for the trainer
+        os.makedirs(config['training']['output_dir'], exist_ok=True)
+        train_path = os.path.join(config['training']['output_dir'], 'train_data.pkl')
+        val_path = os.path.join(config['training']['output_dir'], 'val_data.pkl')
+        
+        with open(train_path, 'wb') as f:
+            pickle.dump(train_data, f)
+        with open(val_path, 'wb') as f:
+            pickle.dump(val_data, f)
+        
+        # Create dataset objects
+        train_dataset = ProteinLigandDataset(train_path)
+        val_dataset = ProteinLigandDataset(val_path)
+        
+        # Initialize trainer
         trainer = DiffusionTrainer(
-            preprocessed_data_path=fixed_data_path,
-            vector_db=vector_db,
+            config=training_config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
             device=config['device']
         )
         
-        trainer.train(
-            num_epochs=config['training']['num_epochs'],
-            batch_size=config['training']['batch_size'],
-            learning_rate=config['training']['learning_rate'],
-            lambda_ic50=config['training']['lambda_ic50'],
-            output_dir=config['training']['output_dir']
-        )
+        # Start training
+        trainer.train()
         
         print("Training completed!")
     else:
