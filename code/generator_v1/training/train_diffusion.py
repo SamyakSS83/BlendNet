@@ -130,9 +130,39 @@ class DiffusionTrainer:
                 device=device
             )
             
-            # Load smi-TED for decoding
+            # Load smi-TED for decoding with robust path resolution
+            print("Loading smi-TED...")
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            possible_smi_ted_paths = [
+                # Direct relative from working directory
+                '../../materials.smi-ted/smi-ted/inference/smi_ted_light',
+                # Relative to current file
+                os.path.join(current_dir, '../../../materials.smi-ted/smi-ted/inference/smi_ted_light'),
+                # Alternative paths
+                os.path.join(current_dir, '../../materials.smi-ted/smi-ted/inference/smi_ted_light'),
+                '../../../materials.smi-ted/smi-ted/inference/smi_ted_light',
+                # Absolute paths based on workspace
+                '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light',
+                '/home/sarvesh/scratch/GS/samyak/.Blendnet/materials.smi-ted/smi-ted/inference/smi_ted_light'
+            ]
+            
+            smi_ted_path = None
+            for path in possible_smi_ted_paths:
+                abs_path = os.path.abspath(path)
+                vocab_test = os.path.join(abs_path, 'bert_vocab_curated.txt')
+                if os.path.exists(vocab_test):
+                    smi_ted_path = abs_path
+                    print(f"Found smi-TED at: {smi_ted_path}")
+                    break
+            
+            if smi_ted_path is None:
+                print("Searched paths:")
+                for path in possible_smi_ted_paths:
+                    print(f"  - {os.path.abspath(path)}")
+                raise FileNotFoundError("Could not locate smi-TED files for training.")
+            
             self.smi_ted = load_smi_ted(
-                folder="../../../materials.smi-ted/smi-ted/inference/smi_ted_light",
+                folder=smi_ted_path,
                 ckpt_filename="smi-ted-Light_40.pt"
             )
         else:
