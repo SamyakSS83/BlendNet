@@ -163,6 +163,10 @@ class BindingPredictor:
         # Create batch using pad_data (same as working script)
         (protein_data, seq_lengths), compound_graph_batch, labels, pocket_mask, compound_mask = pad_data([sample])
         
+        # Ensure compound graph features are integer dtype for embeddings
+        compound_graph_batch.x = compound_graph_batch.x.long()
+        compound_graph_batch.edge_attr = compound_graph_batch.edge_attr.long()
+        
         # Make predictions using the exact same format as working script
         with torch.no_grad():
             ki_pred, *_ = self.model_ki(protein_data, compound_graph_batch, pocket_mask, compound_mask)
