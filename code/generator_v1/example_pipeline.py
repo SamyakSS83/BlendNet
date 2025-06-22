@@ -17,11 +17,13 @@ from inference.ligand_generator import LigandGenerator
 from evaluation.metrics import evaluate_ligand_generation
 
 
-def run_complete_pipeline():
+def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     """Run the complete pipeline from preprocessing to evaluation."""
     
     print("="*80)
     print("PROTEIN-LIGAND DIFFUSION PIPELINE EXAMPLE")
+    if test_mode:
+        print("RUNNING IN TEST MODE")
     print("="*80)
     
     # Configuration
@@ -33,15 +35,15 @@ def run_complete_pipeline():
         },
         'preprocessing': {
             'output_dir': './preprocessed_data',
-            'max_samples': None,  # Process full dataset as per idea.md
+            'max_samples': 1000 if test_mode else None,  # Small subset for testing
             'test_split': 0.2
         },
         'training': {
             'output_dir': './trained_models',
-            'num_epochs': 50,  # Full training
-            'batch_size': 16,   # Reduced for memory efficiency
+            'num_epochs': num_epochs,
+            'batch_size': 8 if test_mode else 16,   # Smaller batch for testing
             'learning_rate': 1e-4,
-            'lambda_ic50': 0.1
+            'lambda_ic50': 0.0 if disable_ic50 else 0.1  # Disable IC50 if requested
         },
         'inference': {
             'num_samples': 10,   # More samples for evaluation
@@ -188,10 +190,10 @@ def run_complete_pipeline():
             'compound_dim': 768,  # smi-TED dimension (verified)
             'protbert_dim': 1024,
             'pseq2sites_dim': 256,
-            'hidden_dim': 512,    # Increased for full training
-            'num_layers': 8,      # Increased for better capacity
+            'hidden_dim': 256 if test_mode else 512,    # Smaller for test mode
+            'num_layers': 4 if test_mode else 8,        # Fewer layers for test mode
             'dropout': 0.1,
-            'num_timesteps': 1000,  # Full diffusion timesteps
+            'num_timesteps': 100 if test_mode else 1000,  # Fewer timesteps for test mode
             
             # Training parameters
             'batch_size': config['training']['batch_size'],
@@ -199,13 +201,13 @@ def run_complete_pipeline():
             'weight_decay': 1e-5,
             'num_epochs': config['training']['num_epochs'],
             'max_grad_norm': 1.0,
-            'num_workers': 4,  # Increased for full training
+            'num_workers': 2 if test_mode else 4,  # Fewer workers for test mode
             
             # Loss weights
             'diffusion_weight': 1.0,
             'ic50_weight': config['training']['lambda_ic50'],
-            'use_ic50_regularization': True,
-            'ic50_regularization_freq': 10,  # Less frequent for stability
+            'use_ic50_regularization': not disable_ic50 and config['training']['lambda_ic50'] > 0,
+            'ic50_regularization_freq': 20 if test_mode else 10,  # Less frequent for test mode
             
             # Checkpointing
             'checkpoint_dir': config['training']['output_dir'],
@@ -213,7 +215,7 @@ def run_complete_pipeline():
             
             # Logging
             'use_wandb': False,
-            'project_name': 'protein-ligand-diffusion-full'
+            'project_name': 'protein-ligand-diffusion-test' if test_mode else 'protein-ligand-diffusion-full'
         }
         
         # Create datasets from the fixed data
@@ -379,10 +381,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Protein-ligand diffusion pipeline example")
     parser.add_argument("--mode", choices=['full', 'quick'], default='full',
                        help="Run full pipeline or quick example")
+    parser.add_argument("--test_training", action='store_true',
+                       help="Run in test mode with reduced settings")
+    parser.add_argument("--num_epochs", type=int, default=50,
+                       help="Number of training epochs")
+    parser.add_argument("--disable_ic50", action='store_true',
+                       help="Disable IC50 regularization for testing")
     
     args = parser.parse_args()
     
     if args.mode == 'full':
-        run_complete_pipeline()
+        run_complete_pipeline(test_mode=args.test_training, 
+                             num_epochs=args.num_epochs,
+                             disable_ic50=args.disable_ic50)
     else:
         run_quick_example()
