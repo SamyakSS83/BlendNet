@@ -292,8 +292,7 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     generated_ligands = generator.generate_ligands(
         protein_sequence=example_protein,
         num_samples=config['inference']['num_samples'],
-        top_k_retrieve=config['inference']['top_k_retrieve'],
-        num_inference_steps=config['inference']['num_inference_steps']
+        k_retrieve=config['inference']['top_k_retrieve']
     )
     
     print(f"Generated {len(generated_ligands)} ligands!")
@@ -393,8 +392,7 @@ def run_quick_example():
         ligands = generator.generate_ligands(
             protein_sequence=protein_seq,
             num_samples=3,
-            top_k_retrieve=5,
-            num_inference_steps=20
+            k_retrieve=5
         )
         
         print("Generated ligands:")
