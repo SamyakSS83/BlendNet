@@ -186,7 +186,7 @@ class DiffusionTrainer:
         if self.ic50_predictor is None:
             return torch.tensor(0.0, device=self.device)
             
-        regularization_loss = 0.0
+        regularization_loss = torch.tensor(0.0, device=self.device)
         batch_size = generated_embeddings.shape[0]
         
         # Decode embeddings to SMILES
@@ -203,7 +203,8 @@ class DiffusionTrainer:
                     
                     # Add regularization term: lambda / ic50 (encourage lower IC50)
                     if ic50_pred > 0:
-                        regularization_loss += self.ic50_weight / (ic50_pred + 1e-6)
+                        reg_term = torch.tensor(self.ic50_weight / (ic50_pred + 1e-6), device=self.device)
+                        regularization_loss += reg_term
                         valid_count += 1
                         
                 except Exception as e:
@@ -211,13 +212,13 @@ class DiffusionTrainer:
                     continue
                     
             if valid_count > 0:
-                regularization_loss /= valid_count
+                regularization_loss = regularization_loss / valid_count
                 
         except Exception as e:
             print(f"IC50 regularization failed: {e}")
-            regularization_loss = 0.0
+            regularization_loss = torch.tensor(0.0, device=self.device)
             
-        return torch.tensor(regularization_loss, device=self.device)
+        return regularization_loss
         
     def train_step(self, batch: Dict) -> Tuple[float, float]:
         """Single training step."""
