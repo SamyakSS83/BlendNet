@@ -162,7 +162,23 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     print("STEP 3: DIFFUSION MODEL TRAINING")
     print("="*60)
     
-    model_checkpoint = os.path.join(config['training']['output_dir'], 'diffusion_model.pth')
+    # Check for existing trained models
+    best_model_path = os.path.join(config['training']['output_dir'], 'best_model.pth')
+    checkpoint_path = os.path.join(config['training']['output_dir'], 'checkpoint_epoch_0.pth')
+    legacy_path = os.path.join(config['training']['output_dir'], 'diffusion_model.pth')
+    
+    # Use the best available model
+    if os.path.exists(best_model_path):
+        model_checkpoint = best_model_path
+        print("✅ Found trained model: best_model.pth")
+    elif os.path.exists(checkpoint_path):
+        model_checkpoint = checkpoint_path
+        print("✅ Found trained model: checkpoint_epoch_0.pth")
+    elif os.path.exists(legacy_path):
+        model_checkpoint = legacy_path
+        print("✅ Found trained model: diffusion_model.pth")
+    else:
+        model_checkpoint = best_model_path  # Default for new training
     
     if not os.path.exists(model_checkpoint):
         print("Training diffusion model...")
@@ -345,9 +361,23 @@ def run_quick_example():
     # and have the necessary files
     
     try:
+        # Find the best available model
+        best_model_path = './trained_models/best_model.pth'
+        checkpoint_path = './trained_models/checkpoint_epoch_0.pth'
+        legacy_path = './trained_models/diffusion_model.pth'
+        
+        if os.path.exists(best_model_path):
+            model_path = best_model_path
+        elif os.path.exists(checkpoint_path):
+            model_path = checkpoint_path
+        elif os.path.exists(legacy_path):
+            model_path = legacy_path
+        else:
+            raise FileNotFoundError("No trained model found. Please run the full pipeline first.")
+        
         # Load pre-trained model and database
         generator = LigandGenerator(
-            diffusion_checkpoint='./trained_models/diffusion_model.pth',
+            diffusion_checkpoint=model_path,
             vector_db_path='./preprocessed_data/vector_database_fixed',
             device='cuda' if torch.cuda.is_available() else 'cpu'
         )
