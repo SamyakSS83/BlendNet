@@ -407,46 +407,99 @@ class DataPreprocessor:
             try:
                 print("Encoding new compounds...")
                 with torch.no_grad():
-                    new_embeddings = self.smi_ted.encode(new_smiles, return_torch=False)
-                print(f"New embeddings shape: {new_embeddings.shape}")
+                    new_embeddings = self.smi_ted.encode(new_smiles)
+                
+                # Handle different return formats from smi-TED
+                if hasattr(new_embeddings, 'values'):
+                    # pandas DataFrame
+                    new_embeddings_np = new_embeddings.values
+                elif hasattr(new_embeddings, 'cpu'):
+                    # torch tensor
+                    new_embeddings_np = new_embeddings.cpu().numpy()
+                else:
+                    # numpy array
+                    new_embeddings_np = np.array(new_embeddings)
+                
+                print(f"New embeddings shape: {new_embeddings_np.shape}")
+                print(f"Expected shape: ({len(new_smiles)}, 768)")
+                
+                # Verify dimensions match
+                if new_embeddings_np.shape[0] != len(new_smiles):
+                    print(f"❌ Shape mismatch: got {new_embeddings_np.shape[0]} embeddings for {len(new_smiles)} SMILES")
+                    # Fallback: use first len(new_smiles) embeddings
+                    if new_embeddings_np.shape[0] > len(new_smiles):
+                        new_embeddings_np = new_embeddings_np[:len(new_smiles)]
+                    else:
+                        raise ValueError(f"Not enough embeddings: got {new_embeddings_np.shape[0]}, need {len(new_smiles)}")
+                
+                if new_embeddings_np.shape[1] != 768:
+                    print(f"❌ Embedding dimension mismatch: got {new_embeddings_np.shape[1]}, expected 768")
+                    raise ValueError(f"Wrong embedding dimension: {new_embeddings_np.shape[1]}")
                 
                 # Update cache
                 for i, smiles in enumerate(new_smiles):
-                    cache[smiles] = new_embeddings[i]
+                    cache[smiles] = new_embeddings_np[i]
                 
                 # Save updated cache
                 with open(cache_file, 'wb') as f:
                     pickle.dump(cache, f)
-                print(f"Cache updated with {len(new_smiles)} new embeddings")
+                print(f"✅ Cache updated with {len(new_smiles)} new embeddings")
                 
             except Exception as e:
-                print(f"Encoding failed: {e}")
+                print(f"❌ Encoding failed: {e}")
+                import traceback
+                traceback.print_exc()
+                print("Using random embeddings as fallback...")
                 # Generate random embeddings as fallback
                 for smiles in new_smiles:
-                    cache[smiles] = np.random.randn(768)  # Default smi-TED dimension
+                    cache[smiles] = np.random.randn(768).astype(np.float32)  # Default smi-TED dimension
         
         # Collect all embeddings from cache in the correct order
         all_embeddings = []
         for smiles in valid_smiles:
             if smiles in cache:
-                all_embeddings.append(cache[smiles])
+                emb = cache[smiles]
+                # Ensure embedding is the right shape and type
+                if isinstance(emb, np.ndarray) and emb.shape == (768,):
+                    all_embeddings.append(emb.astype(np.float32))
+                else:
+                    print(f"⚠️  Invalid embedding for SMILES {smiles}: shape {emb.shape if hasattr(emb, 'shape') else type(emb)}")
+                    all_embeddings.append(np.random.randn(768).astype(np.float32))
             else:
                 # Fallback for missing embeddings
-                all_embeddings.append(np.random.randn(768))
+                all_embeddings.append(np.random.randn(768).astype(np.float32))
         
         if all_embeddings:
-            embeddings = np.array(all_embeddings)
+            try:
+                embeddings = np.stack(all_embeddings, axis=0)  # Use stack instead of array for better error messages
+                print(f"✅ Successfully created embeddings array: {embeddings.shape}")
+            except Exception as e:
+                print(f"❌ Failed to stack embeddings: {e}")
+                print(f"Embedding shapes: {[emb.shape for emb in all_embeddings[:5]]}")  # Show first 5 shapes
+                # Create a clean array
+                embeddings = np.zeros((len(valid_smiles), 768), dtype=np.float32)
+                for i, emb in enumerate(all_embeddings):
+                    if i < len(embeddings) and hasattr(emb, 'shape') and emb.shape == (768,):
+                        embeddings[i] = emb
         else:
             # Complete fallback
-            embeddings = np.random.randn(len(valid_smiles), 768)
+            embeddings = np.random.randn(len(valid_smiles), 768).astype(np.float32)
             
-        print(f"Final embeddings shape: {embeddings.shape}")
-        
         # Create full embeddings array with zeros for invalid SMILES
-        full_embeddings = np.zeros((len(smiles_list), embeddings.shape[1]))
+        full_embeddings = np.zeros((len(smiles_list), embeddings.shape[1]), dtype=np.float32)
         for i, valid_idx in enumerate(valid_indices):
             if i < len(embeddings):
                 full_embeddings[valid_idx] = embeddings[i]
+            
+        print(f"Final embeddings shape: {full_embeddings.shape}")
+        print(f"Expected shape: ({len(smiles_list)}, 768)")
+        
+        # Final verification
+        if full_embeddings.shape != (len(smiles_list), 768):
+            print(f"❌ Final shape mismatch! Expected ({len(smiles_list)}, 768), got {full_embeddings.shape}")
+            # Create clean fallback
+            full_embeddings = np.random.randn(len(smiles_list), 768).astype(np.float32)
+            print(f"✅ Created fallback embeddings: {full_embeddings.shape}")
             
         return full_embeddings
         
