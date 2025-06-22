@@ -176,8 +176,15 @@ class LigandGenerator:
             
         # Step 6: Decode embeddings to SMILES
         print("Decoding embeddings to SMILES...")
-        generated_embeddings_np = generated_embeddings.cpu().numpy()
-        decoded_smiles = self.smi_ted.decode(generated_embeddings_np)
+        # Keep as torch tensor for smi-TED decoder (it expects torch tensor, not numpy)
+        if isinstance(generated_embeddings, torch.Tensor):
+            # Move to CPU but keep as tensor for smi-TED
+            generated_embeddings_cpu = generated_embeddings.cpu()
+        else:
+            # Convert numpy to tensor if needed
+            generated_embeddings_cpu = torch.from_numpy(generated_embeddings).cpu()
+            
+        decoded_smiles = self.smi_ted.decode(generated_embeddings_cpu)
         
         # Step 7: Validate and score generated ligands
         results = []
@@ -206,7 +213,7 @@ class LigandGenerator:
                     
                 result = {
                     'smiles': smiles,
-                    'embedding': generated_embeddings_np[i],
+                    'embedding': generated_embeddings_cpu[i].numpy(),  # Convert to numpy for storage
                     'molecular_weight': mw,
                     'logp': logp,
                     'hbd': hbd,
