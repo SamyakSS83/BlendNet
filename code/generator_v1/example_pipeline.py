@@ -289,7 +289,7 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     
     print(f"Generating ligands for protein sequence (length: {len(example_protein)})...")
     
-    generated_ligands = generator.generate_ligands(
+    generated_ligands, comparison_data = generator.generate_ligands(
         protein_sequence=example_protein,
         num_samples=config['inference']['num_samples'],
         k_retrieve=config['inference']['top_k_retrieve']
@@ -301,8 +301,12 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     print("\\nTop generated ligands:")
     for i, ligand in enumerate(generated_ligands[:3]):
         print(f"{i+1}. SMILES: {ligand['smiles']}")
-        print(f"   Predicted IC50: {ligand['predicted_ic50']:.2f} nM")
-        print(f"   Generation Score: {ligand['generation_score']:.4f}")
+        if ligand.get('predicted_ic50') is not None:
+            print(f"   Predicted IC50: {ligand['predicted_ic50']:.2f} nM")
+        else:
+            print("   Predicted IC50: N/A")
+        print(f"   Molecular Weight: {ligand.get('molecular_weight', 'N/A'):.2f}" if ligand.get('molecular_weight') else "   Molecular Weight: N/A")
+        print(f"   LogP: {ligand.get('logp', 'N/A'):.2f}" if ligand.get('logp') else "   LogP: N/A")
         print()
     
     # Step 5: Evaluation
@@ -312,15 +316,26 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     
     # Extract SMILES and IC50 predictions for evaluation
     generated_smiles = [ligand['smiles'] for ligand in generated_ligands]
-    predicted_ic50s = [ligand['predicted_ic50'] for ligand in generated_ligands]
+    predicted_ic50s = [ligand.get('predicted_ic50') for ligand in generated_ligands if ligand.get('predicted_ic50') is not None]
     
-    # Evaluate
-    print("Computing evaluation metrics...")
-    metrics = evaluate_ligand_generation(
-        generated_smiles=generated_smiles,
-        ic50_predictions=predicted_ic50s,
-        print_summary=True
-    )
+    print(f"Generated {len(generated_smiles)} SMILES")
+    print(f"Got IC50 predictions for {len(predicted_ic50s)} compounds")
+    
+    if predicted_ic50s:
+        # Evaluate
+        print("Computing evaluation metrics...")
+        metrics = evaluate_ligand_generation(
+            generated_smiles=generated_smiles,
+            ic50_predictions=predicted_ic50s,
+            print_summary=True
+        )
+    else:
+        print("⚠️  No valid IC50 predictions available, skipping detailed evaluation")
+        metrics = {
+            'num_generated': len(generated_smiles),
+            'num_valid_ic50': 0,
+            'note': 'IC50 prediction failed for all compounds'
+        }
     
     # Step 6: Save Results
     print("\\n" + "="*60)
@@ -335,6 +350,7 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     results = {
         'input_protein_sequence': example_protein,
         'generated_ligands': generated_ligands,
+        'comparison_data': comparison_data,
         'evaluation_metrics': metrics,
         'config': config
     }
