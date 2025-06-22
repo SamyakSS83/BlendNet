@@ -31,7 +31,7 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     config = {
         'data_paths': {
             'ic50_data': '/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv',
-            'smi_ted_path': '../../materials.smi-ted/smi-ted/inference/smi_ted_light',
+            'smi_ted_path': os.path.abspath('../../materials.smi-ted/smi-ted/inference/smi_ted_light'),
             'smi_ted_ckpt': 'smi-ted-Light_40.pt'
         },
         'preprocessing': {
@@ -279,6 +279,8 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     generator = LigandGenerator(
         diffusion_checkpoint=model_checkpoint,
         vector_db_path=db_path,
+        smi_ted_path=config['data_paths']['smi_ted_path'],
+        smi_ted_ckpt=config['data_paths']['smi_ted_ckpt'],
         device=config['device']
     )
     
