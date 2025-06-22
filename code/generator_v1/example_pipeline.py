@@ -151,8 +151,8 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
         try:
             # Test retrieval with a simple compound query
             test_embedding = np.random.randn(1, 768).astype(np.float32)  # Random test embedding
-            test_results = vector_db.search_similar_compounds(test_embedding, top_k=5)
-            print(f"✅ Database test successful: retrieved {len(test_results)} results")
+            indices, scores = vector_db.search_similar_compounds(test_embedding, k=5)
+            print(f"✅ Database test successful: retrieved {len(indices)} results")
         except Exception as e:
             print(f"⚠️  Database test warning: {e}")
             print("Database may work but encountered an issue during testing")
