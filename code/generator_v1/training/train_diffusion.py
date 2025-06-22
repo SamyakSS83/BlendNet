@@ -192,7 +192,13 @@ class DiffusionTrainer:
         # Decode embeddings to SMILES
         try:
             with torch.no_grad():
-                decoded_smiles = self.smi_ted.decode(generated_embeddings.detach().cpu().numpy())
+                # Ensure embeddings are numpy arrays for smi-TED decoding
+                if isinstance(generated_embeddings, torch.Tensor):
+                    embedding_numpy = generated_embeddings.detach().cpu().numpy()
+                else:
+                    embedding_numpy = generated_embeddings
+                    
+                decoded_smiles = self.smi_ted.decode(embedding_numpy)
                 
             valid_count = 0
             for i, (smiles, sequence) in enumerate(zip(decoded_smiles, sequences)):
@@ -203,12 +209,20 @@ class DiffusionTrainer:
                     
                     # Add regularization term: lambda / ic50 (encourage lower IC50)
                     if ic50_pred > 0:
-                        reg_term = torch.tensor(self.ic50_weight / (ic50_pred + 1e-6), device=self.device)
+                        # Ensure ic50_pred is a float, not tensor
+                        if isinstance(ic50_pred, torch.Tensor):
+                            ic50_value = float(ic50_pred.cpu().item())
+                        else:
+                            ic50_value = float(ic50_pred)
+                            
+                        reg_term = torch.tensor(self.ic50_weight / (ic50_value + 1e-6), 
+                                              device=self.device, dtype=torch.float32)
                         regularization_loss += reg_term
                         valid_count += 1
                         
                 except Exception as e:
-                    # Skip invalid SMILES
+                    # Skip invalid SMILES or prediction errors
+                    print(f"IC50 prediction failed for sample {i}: {e}")
                     continue
                     
             if valid_count > 0:
