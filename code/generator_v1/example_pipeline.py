@@ -20,7 +20,8 @@ from inference.ligand_generator import LigandGenerator
 from evaluation.metrics import evaluate_ligand_generation
 
 
-def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
+def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False, batch_size=None, num_workers=None, max_samples=None, 
+                         learning_rate=1e-4, hidden_dim=None, num_layers=None, num_timesteps=None):
     """Run the complete pipeline from preprocessing to evaluation."""
     
     print("="*80)
@@ -38,14 +39,14 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
         },
         'preprocessing': {
             'output_dir': './preprocessed_data',
-            'max_samples': 10000 if test_mode else None,  # Much smaller subset for testing
+            'max_samples': max_samples if max_samples is not None else (10000 if test_mode else None),  # Use provided max_samples or defaults
             'test_split': 0.2
         },
         'training': {
             'output_dir': './trained_models',
             'num_epochs': num_epochs,
-            'batch_size': 4 if test_mode else 8,   # Much smaller batch for memory
-            'learning_rate': 1e-4,
+            'batch_size': batch_size if batch_size is not None else (4 if test_mode else 8),   # Use provided batch_size or defaults
+            'learning_rate': learning_rate,
             'lambda_ic50': 0.0 if disable_ic50 else 0.1  # Disable IC50 if requested
         },
         'inference': {
@@ -58,6 +59,13 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     
     print(f"Using device: {config['device']}")
     
+    # Display configuration
+    print(f"Configuration:")
+    print(f"  Batch size: {config['training']['batch_size']}")
+    print(f"  Max samples: {config['preprocessing']['max_samples'] or 'All'}")
+    print(f"  Learning rate: {config['training']['learning_rate']}")
+    print(f"  Number of epochs: {config['training']['num_epochs']}")
+    
     # Check system memory
     memory = psutil.virtual_memory()
     print(f"System RAM: {memory.total / (1024**3):.1f} GB total, {memory.available / (1024**3):.1f} GB available")
@@ -66,7 +74,8 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
         if not test_mode:
             print("Automatically enabling test mode due to low memory...")
             test_mode = True
-            config['preprocessing']['max_samples'] = 10000
+            if max_samples is None:
+                config['preprocessing']['max_samples'] = 10000
     
     # Step 1: Data Preprocessing
     print("\\n" + "="*60)
@@ -220,10 +229,10 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
             'compound_dim': 768,  # smi-TED dimension (verified)
             'protbert_dim': 1024,
             'pseq2sites_dim': 256,
-            'hidden_dim': 256 if test_mode else 512,    # Smaller for test mode
-            'num_layers': 4 if test_mode else 8,        # Fewer layers for test mode
+            'hidden_dim': hidden_dim if hidden_dim is not None else (256 if test_mode else 512),    # Use provided hidden_dim or defaults
+            'num_layers': num_layers if num_layers is not None else (4 if test_mode else 8),        # Use provided num_layers or defaults
             'dropout': 0.1,
-            'num_timesteps': 100 if test_mode else 1000,  # Fewer timesteps for test mode
+            'num_timesteps': num_timesteps if num_timesteps is not None else (100 if test_mode else 1000),  # Use provided num_timesteps or defaults
             
             # Training parameters
             'batch_size': config['training']['batch_size'],
@@ -231,7 +240,7 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
             'weight_decay': 1e-5,
             'num_epochs': config['training']['num_epochs'],
             'max_grad_norm': 1.0,
-            'num_workers': 1 if test_mode else 2,  # Reduced workers for memory
+            'num_workers': num_workers if num_workers is not None else (1 if test_mode else 2),  # Use provided num_workers or defaults
             
             # Loss weights
             'diffusion_weight': 1.0,
@@ -458,6 +467,20 @@ if __name__ == "__main__":
                        help="Run in test mode with reduced settings")
     parser.add_argument("--num_epochs", type=int, default=50,
                        help="Number of training epochs")
+    parser.add_argument("--batch_size", type=int, default=None,
+                       help="Training batch size (default: 4 for test mode, 8 for full mode)")
+    parser.add_argument("--num_workers", type=int, default=None,
+                       help="Number of data loading workers (default: 1 for test mode, 2 for full mode)")
+    parser.add_argument("--max_samples", type=int, default=None,
+                       help="Maximum number of samples to process (default: 10000 for test mode, all for full mode)")
+    parser.add_argument("--learning_rate", type=float, default=1e-4,
+                       help="Learning rate for training")
+    parser.add_argument("--hidden_dim", type=int, default=None,
+                       help="Hidden dimension of the model (default: 256 for test mode, 512 for full mode)")
+    parser.add_argument("--num_layers", type=int, default=None,
+                       help="Number of layers in the model (default: 4 for test mode, 8 for full mode)")
+    parser.add_argument("--num_timesteps", type=int, default=None,
+                       help="Number of diffusion timesteps (default: 100 for test mode, 1000 for full mode)")
     parser.add_argument("--disable_ic50", action='store_true',
                        help="Disable IC50 regularization for testing")
     parser.add_argument("--low_memory", action='store_true',
@@ -469,9 +492,27 @@ if __name__ == "__main__":
     if args.low_memory:
         args.test_training = True
     
+    # Apply low memory defaults if needed
+    if args.low_memory:
+        if args.batch_size is None:
+            args.batch_size = 2
+        if args.num_workers is None:
+            args.num_workers = 1
+        if args.max_samples is None:
+            args.max_samples = 5000
+    
     if args.mode == 'full':
-        run_complete_pipeline(test_mode=args.test_training, 
-                             num_epochs=args.num_epochs,
-                             disable_ic50=args.disable_ic50)
+        run_complete_pipeline(
+            test_mode=args.test_training, 
+            num_epochs=args.num_epochs,
+            disable_ic50=args.disable_ic50,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            max_samples=args.max_samples,
+            learning_rate=args.learning_rate,
+            hidden_dim=args.hidden_dim,
+            num_layers=args.num_layers,
+            num_timesteps=args.num_timesteps
+        )
     else:
         run_quick_example()
