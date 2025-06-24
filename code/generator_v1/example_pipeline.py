@@ -6,6 +6,8 @@ import sys
 import torch
 import pickle
 import numpy as np
+import gc
+import psutil
 
 # Add paths
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
@@ -36,13 +38,13 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
         },
         'preprocessing': {
             'output_dir': './preprocessed_data',
-            'max_samples': 1000 if test_mode else None,  # Small subset for testing
+            'max_samples': 10000 if test_mode else None,  # Much smaller subset for testing
             'test_split': 0.2
         },
         'training': {
             'output_dir': './trained_models',
             'num_epochs': num_epochs,
-            'batch_size': 8 if test_mode else 16,   # Smaller batch for testing
+            'batch_size': 4 if test_mode else 8,   # Much smaller batch for memory
             'learning_rate': 1e-4,
             'lambda_ic50': 0.0 if disable_ic50 else 0.1  # Disable IC50 if requested
         },
@@ -55,6 +57,16 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
     }
     
     print(f"Using device: {config['device']}")
+    
+    # Check system memory
+    memory = psutil.virtual_memory()
+    print(f"System RAM: {memory.total / (1024**3):.1f} GB total, {memory.available / (1024**3):.1f} GB available")
+    if memory.available < 10 * (1024**3):  # Less than 10GB available
+        print("⚠️  WARNING: Low system memory. Consider using --test_training mode or adding more RAM.")
+        if not test_mode:
+            print("Automatically enabling test mode due to low memory...")
+            test_mode = True
+            config['preprocessing']['max_samples'] = 10000
     
     # Step 1: Data Preprocessing
     print("\\n" + "="*60)
@@ -219,7 +231,7 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
             'weight_decay': 1e-5,
             'num_epochs': config['training']['num_epochs'],
             'max_grad_norm': 1.0,
-            'num_workers': 2 if test_mode else 4,  # Fewer workers for test mode
+            'num_workers': 1 if test_mode else 2,  # Reduced workers for memory
             
             # Loss weights
             'diffusion_weight': 1.0,
@@ -238,18 +250,31 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False):
         
         # Create datasets from the fixed data
         print("Creating training and validation datasets...")
+        
+        # Memory cleanup before loading large datasets
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
         train_data = full_data['train_data']
         val_data = full_data['test_data']
+        
+        print(f"Memory usage after loading datasets: {psutil.virtual_memory().percent:.1f}%")
         
         # Save temporary dataset files for the trainer
         os.makedirs(config['training']['output_dir'], exist_ok=True)
         train_path = os.path.join(config['training']['output_dir'], 'train_data.pkl')
         val_path = os.path.join(config['training']['output_dir'], 'val_data.pkl')
         
+        print("Saving temporary dataset files...")
         with open(train_path, 'wb') as f:
             pickle.dump(train_data, f)
         with open(val_path, 'wb') as f:
             pickle.dump(val_data, f)
+            
+        # Clear from memory after saving
+        del full_data, train_data, val_data
+        gc.collect()
         
         # Create dataset objects
         train_dataset = ProteinLigandDataset(train_path)
@@ -435,8 +460,14 @@ if __name__ == "__main__":
                        help="Number of training epochs")
     parser.add_argument("--disable_ic50", action='store_true',
                        help="Disable IC50 regularization for testing")
+    parser.add_argument("--low_memory", action='store_true',
+                       help="Enable low memory mode (reduces batch size and dataset size)")
     
     args = parser.parse_args()
+    
+    # Override test_mode if low_memory is specified
+    if args.low_memory:
+        args.test_training = True
     
     if args.mode == 'full':
         run_complete_pipeline(test_mode=args.test_training, 
