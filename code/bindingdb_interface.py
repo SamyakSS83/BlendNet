@@ -184,8 +184,8 @@ class BindingDBInterface:
             print(f"Predictions completed successfully")
             
         return {
-            'Ki': float(ki_pred.cpu().item()),
-            'IC50': float(ic50_pred.cpu().item())
+            'Ki': float(ki_pred.cpu().item()) if isinstance(ki_pred, torch.Tensor) else float(ki_pred),
+            'IC50': float(ic50_pred.cpu().item()) if isinstance(ic50_pred, torch.Tensor) else float(ic50_pred)
         }
 
 # Example usage with a real protein sequence
@@ -195,8 +195,8 @@ if __name__ == "__main__":
     
     iface = BindingDBInterface(
         config_path="BindingDB.yml",
-        ki_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
-        ic50_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
+        ki_weights="/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
+        ic50_weights="/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
         device="cuda:0"
     )
 

@@ -125,8 +125,8 @@ class DiffusionTrainer:
             print("Loading IC50 predictor for regularization...")
             self.ic50_predictor = BindingDBInterface(
                 config_path="../BindingDB.yml",
-                ki_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
-                ic50_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
+                ki_weights="/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
+                ic50_weights="/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
                 device=device
             )
             
@@ -143,7 +143,7 @@ class DiffusionTrainer:
                 '../../../materials.smi-ted/smi-ted/inference/smi_ted_light',
                 # Absolute paths based on workspace
                 '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light',
-                '/home/sarvesh/scratch/GS/samyak/.Blendnet/materials.smi-ted/smi-ted/inference/smi_ted_light'
+                '/home/threesamyak/scratch/GS/samyak/.Blendnet/materials.smi-ted/smi-ted/inference/smi_ted_light'
             ]
             
             smi_ted_path = None

@@ -10,7 +10,7 @@ Design a diffusion model that generates optimal ligands for given protein sequen
 ## Architecture Overview
 
 ### Data Pipeline
-1. **Input Data**: `/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv`
+1. **Input Data**: `/home/threesamyak/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv`
 2. **Vector Database**: FAISS for efficient similarity search
 3. **Storage Format**: [compound_id, protbert_embeddings(E1), pseq2sites_embeddings(Es), smiles, ic50_value]
 

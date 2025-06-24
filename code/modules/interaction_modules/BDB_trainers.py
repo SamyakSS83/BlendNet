@@ -138,7 +138,7 @@ class BlendNetS_trainer():
                 pred_list.extend(ba_teacher_labels.detach().cpu().tolist())
                 label_list.extend(labels.detach().cpu().tolist())
 
-        return torch.tensor(pred_list).cuda(), torch.tensor(label_list).cuda()
+        return torch.tensor(pred_list, device='cuda' if torch.cuda.is_available() else 'cpu'), torch.tensor(label_list, device='cuda' if torch.cuda.is_available() else 'cpu')
       
     @torch.no_grad()
     def test(self, loader):

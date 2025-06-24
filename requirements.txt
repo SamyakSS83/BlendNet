@@ -1,0 +1,15 @@
+torch>=2.6
+torchaudio
+tensorboard
+torchvideo
+torch_scatter
+wandb
+biopython
+protobuf
+faiss-cpu
+sentencepiece
+transformers
+pytorch-fast-transformers
+torch_optimizer
+torch_geometric
+pandas

@@ -68,7 +68,7 @@ class DataPreprocessor:
                 '../materials.smi-ted/smi-ted/inference/smi_ted_light',
                 # Absolute paths based on your workspace
                 '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light',
-                '/home/sarvesh/scratch/GS/samyak/.Blendnet/materials.smi-ted/smi-ted/inference/smi_ted_light'
+                '/home/threesamyak/scratch/GS/samyak/.Blendnet/materials.smi-ted/smi-ted/inference/smi_ted_light'
             ]
             
             smi_ted_path = None
@@ -613,7 +613,7 @@ def main():
     
     # Initialize preprocessor
     preprocessor = DataPreprocessor(
-        ic50_data_path="/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv"
+        ic50_data_path="/home/threesamyak/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv"
     )
     
     # Load and split data

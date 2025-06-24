@@ -2,14 +2,14 @@
 
 # Data paths
 data:
-  ic50_data_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv"
+  ic50_data_path: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv"
   smi_ted_path: "../../materials.smi-ted/smi-ted/inference/smi_ted_light"
   smi_ted_checkpoint: "smi-ted-Light_40.pt"
   bindingdb_config: "../BindingDB.yml"
   
   # BlendNet model weights
-  ki_weights: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth"
-  ic50_weights: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth"
+  ki_weights: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth"
+  ic50_weights: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth"
 
 # Preprocessing configuration
 preprocessing:
