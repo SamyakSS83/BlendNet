@@ -13,3 +13,5 @@ pytorch-fast-transformers
 torch_optimizer
 torch_geometric
 pandas
+rdkit
+scikit-learn
