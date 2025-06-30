@@ -105,6 +105,8 @@ class LigandGenerator:
         try:
             # Load smi-TED
             if load_smi_ted is not None:
+                # CORRECTED: Use root materials.smi-ted directory, not subdirectory
+                # The checkpoint file is in the root directory
                 smi_ted_path = '/home/sarvesh/scratch/GS/samyak/.Blendnet/materials.smi-ted'
                 self.smi_ted = load_smi_ted(
                     folder=smi_ted_path,
