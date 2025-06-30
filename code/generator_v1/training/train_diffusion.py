@@ -201,6 +201,29 @@ class DiffusionTrainer:
         print(f"SMILES validation: {'enabled' if self.use_smiles_validation else 'disabled'}")
         if self.use_smiles_validation:
             print(f"SMILES validation weight: {self.smiles_validation_weight}")
+            
+        # Initialize data loaders
+        self.train_loader = DataLoader(
+            train_dataset,
+            batch_size=config.get('batch_size', 32),
+            shuffle=True,
+            num_workers=config.get('num_workers', 4)
+        )
+        
+        self.val_loader = DataLoader(
+            val_dataset,
+            batch_size=config.get('batch_size', 32),
+            shuffle=False,
+            num_workers=config.get('num_workers', 4)
+        )
+        
+        # Training state
+        self.step = 0
+        self.epoch = 0
+        self.best_val_loss = float('inf')
+        
+        # Loss weights
+        self.diffusion_weight = config.get('diffusion_weight', 1.0)
     
     def add_noise(self, x_0, timesteps):
         """Add noise to clean data according to diffusion schedule"""
@@ -236,6 +259,20 @@ class DiffusionTrainer:
             all_smiles = []
             embeddings_np = predicted_embeddings.detach().cpu().numpy()
             
+            # SANITY CHECK: Decode and print first 2 embeddings for debugging
+            print(f"SANITY CHECK: Decoding first 2 embeddings for SMILES validation...")
+            if len(embeddings_np) >= 2:
+                try:
+                    first_two_embeddings = embeddings_np[:2]
+                    sample_smiles = self.decoder(first_two_embeddings)
+                    if isinstance(sample_smiles, list):
+                        for i, smiles in enumerate(sample_smiles):
+                            print(f"Sample SMILES {i}: {smiles[:80]}{'...' if len(smiles) > 80 else ''}")
+                    else:
+                        print(f"Sample SMILES: {str(sample_smiles)[:80]}{'...' if len(str(sample_smiles)) > 80 else ''}")
+                except Exception as e:
+                    print(f"Failed to decode sample embeddings: {e}")
+            
             for i in range(0, len(embeddings_np), batch_size):
                 batch_embeddings = embeddings_np[i:i+batch_size]
                 try:
@@ -251,6 +288,7 @@ class DiffusionTrainer:
             
             # Calculate validity metrics
             validity_metrics = calculate_smiles_validity_metrics(all_smiles)
+            print(f"SMILES Validity Metrics: {validity_metrics}")
             
             # Convert to loss (1 - validity)
             validity_loss = 1.0 - validity_metrics['organic_fraction']
@@ -261,6 +299,22 @@ class DiffusionTrainer:
             print(f"Warning: SMILES validation failed: {e}")
             return torch.tensor(0.0, device=self.device)
         
+    def compute_ic50_regularization(self, 
+                                   generated_embeddings: torch.Tensor,
+                                   protein_embeddings: torch.Tensor,
+                                   sequences: List[str]) -> torch.Tensor:
+        """Compute IC50 regularization term."""
+        print(f"DEBUG: IC50 regularization called")
+        print(f"DEBUG: ic50_predictor is None: {self.ic50_predictor is None}")
+        
+        if self.ic50_predictor is None:
+            print("DEBUG: IC50 predictor is None, returning 0")
+            return torch.tensor(0.0, device=self.device)
+            
+        # For now, return 0 to avoid errors and focus on SMILES validation
+        print("DEBUG: IC50 regularization temporarily disabled for SMILES validation testing")
+        return torch.tensor(0.0, device=self.device)
+    
     def train_step(self, batch: Dict) -> Tuple[float, float, float]:
         """Single training step."""
         self.model.train()
