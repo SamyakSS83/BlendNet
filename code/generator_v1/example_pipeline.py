@@ -295,11 +295,53 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False, ba
         train_dataset = ProteinLigandDataset(train_path)
         val_dataset = ProteinLigandDataset(val_path)
         
+        # Initialize the diffusion model
+        from models.diffusion_model import ProteinLigandDiffusion
+        
+        model = ProteinLigandDiffusion(
+            compound_dim=training_config['compound_dim'],
+            protbert_dim=training_config['protbert_dim'],
+            pseq2sites_dim=training_config['pseq2sites_dim'],
+            num_timesteps=training_config['num_timesteps'],
+            hidden_dim=training_config['hidden_dim'],
+            num_layers=training_config['num_layers'],
+            dropout=training_config['dropout']
+        )
+        
+        # Load smi-TED for encoding/decoding
+        print("Loading smi-TED for compound encoding/decoding...")
+        smi_ted_path = None
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        possible_paths = [
+            '../materials.smi-ted/smi-ted/inference/smi_ted_light',
+            os.path.join(current_dir, '../materials.smi-ted/smi-ted/inference/smi_ted_light'),
+            '../../materials.smi-ted/smi-ted/inference/smi_ted_light'
+        ]
+        
+        for path in possible_paths:
+            abs_path = os.path.abspath(path)
+            if os.path.exists(os.path.join(abs_path, 'bert_vocab_curated.txt')):
+                smi_ted_path = abs_path
+                break
+                
+        if smi_ted_path is None:
+            raise FileNotFoundError("Could not locate smi-TED for compound encoding/decoding")
+            
+        from inference.smi_ted_light.load import load_smi_ted
+        smi_ted = load_smi_ted(
+            folder=smi_ted_path,
+            ckpt_filename="smi-ted-Light_40.pt"
+        )
+        
         # Initialize trainer
         trainer = DiffusionTrainer(
-            config=training_config,
+            model=model,
             train_dataset=train_dataset,
             val_dataset=val_dataset,
+            config=training_config,
+            encoder=smi_ted.encode,  # Use smi-TED encoder
+            decoder=smi_ted.decode,  # Use smi-TED decoder
+            ic50_predictor=None,     # Will be loaded inside if needed
             device=config['device']
         )
         
