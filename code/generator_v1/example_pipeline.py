@@ -21,7 +21,8 @@ from evaluation.metrics import evaluate_ligand_generation
 
 
 def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False, batch_size=None, num_workers=None, max_samples=None, 
-                         learning_rate=1e-4, hidden_dim=None, num_layers=None, num_timesteps=None):
+                         learning_rate=1e-4, hidden_dim=None, num_layers=None, num_timesteps=None, use_smiles_validation=True,
+                         smiles_validation_weight=0.1, smiles_validation_freq=50):
     """Run the complete pipeline from preprocessing to evaluation."""
     
     print("="*80)
@@ -247,6 +248,11 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False, ba
             'ic50_weight': config['training']['lambda_ic50'],
             'use_ic50_regularization': not disable_ic50 and config['training']['lambda_ic50'] > 0,
             'ic50_regularization_freq': 20 if test_mode else 10,  # Less frequent for test mode
+            
+            # SMILES validation parameters
+            'use_smiles_validation': use_smiles_validation,
+            'smiles_validation_weight': smiles_validation_weight,
+            'smiles_validation_freq': smiles_validation_freq,
             
             # Checkpointing
             'checkpoint_dir': config['training']['output_dir'],
@@ -483,6 +489,12 @@ if __name__ == "__main__":
                        help="Number of diffusion timesteps (default: 100 for test mode, 1000 for full mode)")
     parser.add_argument("--disable_ic50", action='store_true',
                        help="Disable IC50 regularization for testing")
+    parser.add_argument("--use_smiles_validation", action='store_true', default=True,
+                       help="Use SMILES validation during training")
+    parser.add_argument("--smiles_validation_weight", type=float, default=0.1,
+                       help="Weight for SMILES validation loss")
+    parser.add_argument("--smiles_validation_freq", type=int, default=50,
+                       help="Frequency of SMILES validation (every N steps)")
     parser.add_argument("--low_memory", action='store_true',
                        help="Enable low memory mode (reduces batch size and dataset size)")
     
@@ -512,7 +524,10 @@ if __name__ == "__main__":
             learning_rate=args.learning_rate,
             hidden_dim=args.hidden_dim,
             num_layers=args.num_layers,
-            num_timesteps=args.num_timesteps
+            num_timesteps=args.num_timesteps,
+            use_smiles_validation=args.use_smiles_validation,
+            smiles_validation_weight=args.smiles_validation_weight,
+            smiles_validation_freq=args.smiles_validation_freq
         )
     else:
         run_quick_example()

@@ -14,6 +14,17 @@ from tqdm import tqdm
 import wandb
 import argparse
 
+# RDKit imports for SMILES validation
+try:
+    from rdkit import Chem
+    from rdkit.Chem import Descriptors, Crippen, rdMolDescriptors
+    RDKIT_AVAILABLE = True
+except ImportError:
+    print("Warning: RDKit not available, SMILES validation disabled")
+    RDKIT_AVAILABLE = False
+from rdkit import Chem
+from rdkit.Chem import Descriptors, Crippen
+
 # Add parent directories to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../../materials.smi-ted/smi-ted/'))
@@ -60,7 +71,197 @@ class ProteinLigandDataset(Dataset):
         }
 
 
+def validate_smiles(smiles: str) -> bool:
+    """
+    Validate if a SMILES string represents a valid, organic molecule.
+    
+    Args:
+        smiles: SMILES string to validate
+        
+    Returns:
+        True if valid and organic, False otherwise
+    """
+    if not RDKIT_AVAILABLE:
+        return True  # Skip validation if RDKit is not available
+        
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return False
+            
+        # Check if molecule is organic (contains only common organic elements)
+        organic_elements = {'C', 'N', 'O', 'P', 'S', 'F', 'Cl', 'Br', 'I', 'H'}
+        atom_symbols = {atom.GetSymbol() for atom in mol.GetAtoms()}
+        
+        if not atom_symbols.issubset(organic_elements):
+            return False
+            
+        # Additional chemical validity checks
+        try:
+            # Check if we can calculate basic descriptors
+            mw = Descriptors.MolWt(mol)
+            logp = Crippen.MolLogP(mol)
+            
+            # Basic sanity checks
+            if mw <= 0 or mw > 2000:  # Reasonable molecular weight range
+                return False
+                
+            return True
+            
+        except Exception:
+            return False
+            
+    except Exception:
+        return False
+
+def calculate_smiles_validity_metrics(smiles_list: List[str]) -> Dict[str, float]:
+    """
+    Calculate SMILES validity metrics for a list of SMILES.
+    
+    Args:
+        smiles_list: List of SMILES strings
+        
+    Returns:
+        Dictionary with validity metrics
+    """
+    if not RDKIT_AVAILABLE or not smiles_list:
+        return {'validity': 1.0, 'organic_fraction': 1.0}
+        
+    valid_count = 0
+    organic_count = 0
+    
+    for smiles in smiles_list:
+        if validate_smiles(smiles):
+            valid_count += 1
+            organic_count += 1
+        else:
+            # Check if it's at least parseable (even if not organic)
+            try:
+                mol = Chem.MolFromSmiles(smiles)
+                if mol is not None:
+                    valid_count += 1
+            except Exception:
+                pass
+    
+    total = len(smiles_list)
+    return {
+        'validity': valid_count / total if total > 0 else 0.0,
+        'organic_fraction': organic_count / total if total > 0 else 0.0
+    }
+
 class DiffusionTrainer:
+    def __init__(
+        self,
+        model,
+        train_dataset,
+        val_dataset,
+        config: Dict,
+        encoder,
+        decoder,
+        ic50_predictor=None,
+        device='cuda'
+    ):
+        self.model = model.to(device)
+        self.train_dataset = train_dataset
+        self.val_dataset = val_dataset
+        self.config = config
+        self.encoder = encoder
+        self.decoder = decoder
+        self.ic50_predictor = ic50_predictor
+        self.device = device
+        
+        # Initialize optimizer
+        self.optimizer = optim.Adam(
+            self.model.parameters(),
+            lr=config.get('learning_rate', 1e-4),
+            weight_decay=config.get('weight_decay', 1e-5)
+        )
+        
+        # Initialize scheduler
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer,
+            mode='min',
+            factor=0.5,
+            patience=10,
+            verbose=True
+        )
+        
+        # Diffusion parameters
+        self.num_timesteps = config.get('num_timesteps', 1000)
+        self.beta_start = config.get('beta_start', 1e-4)
+        self.beta_end = config.get('beta_end', 0.02)
+        
+        # Create beta schedule
+        self.betas = torch.linspace(self.beta_start, self.beta_end, self.num_timesteps).to(device)
+        self.alphas = 1 - self.betas
+        self.alpha_bars = torch.cumprod(self.alphas, dim=0)
+        
+        # SMILES validation parameters
+        self.smiles_validation_weight = config.get('smiles_validation_weight', 0.1)
+        self.use_smiles_validation = config.get('use_smiles_validation', True) and RDKIT_AVAILABLE
+        
+        print(f"SMILES validation: {'enabled' if self.use_smiles_validation else 'disabled'}")
+        if self.use_smiles_validation:
+            print(f"SMILES validation weight: {self.smiles_validation_weight}")
+    
+    def add_noise(self, x_0, timesteps):
+        """Add noise to clean data according to diffusion schedule"""
+        noise = torch.randn_like(x_0)
+        sqrt_alpha_bar = torch.sqrt(self.alpha_bars[timesteps]).unsqueeze(-1)
+        sqrt_one_minus_alpha_bar = torch.sqrt(1 - self.alpha_bars[timesteps]).unsqueeze(-1)
+        
+        return sqrt_alpha_bar * x_0 + sqrt_one_minus_alpha_bar * noise, noise
+    
+    def predict_x0_from_noise(self, x_t, noise_pred, timesteps):
+        """Predict x_0 from noisy input and predicted noise"""
+        sqrt_alpha_bar = torch.sqrt(self.alpha_bars[timesteps]).unsqueeze(-1)
+        sqrt_one_minus_alpha_bar = torch.sqrt(1 - self.alpha_bars[timesteps]).unsqueeze(-1)
+        
+        return (x_t - sqrt_one_minus_alpha_bar * noise_pred) / sqrt_alpha_bar
+    
+    def calculate_smiles_validation_loss(self, predicted_embeddings, batch_size=8):
+        """
+        Calculate a loss term based on SMILES validity.
+        
+        Args:
+            predicted_embeddings: Predicted compound embeddings
+            batch_size: Batch size for decoding (to avoid memory issues)
+            
+        Returns:
+            Validation loss (scalar tensor)
+        """
+        if not self.use_smiles_validation:
+            return torch.tensor(0.0, device=self.device)
+            
+        try:
+            # Decode embeddings to SMILES in batches
+            all_smiles = []
+            embeddings_np = predicted_embeddings.detach().cpu().numpy()
+            
+            for i in range(0, len(embeddings_np), batch_size):
+                batch_embeddings = embeddings_np[i:i+batch_size]
+                try:
+                    batch_smiles = self.decoder(batch_embeddings)
+                    if isinstance(batch_smiles, list):
+                        all_smiles.extend(batch_smiles)
+                    else:
+                        all_smiles.append(batch_smiles)
+                except Exception as e:
+                    print(f"Warning: Decoder failed for batch {i//batch_size}: {e}")
+                    # Add placeholder invalid SMILES for failed decodings
+                    all_smiles.extend(['[INVALID]'] * len(batch_embeddings))
+            
+            # Calculate validity metrics
+            validity_metrics = calculate_smiles_validity_metrics(all_smiles)
+            
+            # Convert to loss (1 - validity)
+            validity_loss = 1.0 - validity_metrics['organic_fraction']
+            
+            return torch.tensor(validity_loss, device=self.device, dtype=torch.float32)
+            
+        except Exception as e:
+            print(f"Warning: SMILES validation failed: {e}")
+            return torch.tensor(0.0, device=self.device)
     """Trainer for protein-ligand diffusion model."""
     
     def __init__(self,
@@ -284,7 +485,7 @@ class DiffusionTrainer:
             
         return regularization_loss
         
-    def train_step(self, batch: Dict) -> Tuple[float, float]:
+    def train_step(self, batch: Dict) -> Tuple[float, float, float]:
         """Single training step."""
         self.model.train()
         
@@ -298,6 +499,10 @@ class DiffusionTrainer:
         # Diffusion loss (MSE between predicted and actual noise)
         diffusion_loss = nn.MSELoss()(predicted_noise, noise)
         
+        # Initialize regularization losses
+        ic50_reg = torch.tensor(0.0, device=self.device)
+        smiles_validation_loss = torch.tensor(0.0, device=self.device)
+        
         # IC50 regularization (optional)
         if self.config['use_ic50_regularization'] and self.step % self.config['ic50_regularization_freq'] == 0:
             # Reconstruct clean compound embeddings from noisy input and predicted noise
@@ -306,11 +511,18 @@ class DiffusionTrainer:
             # Then predict x_0 from x_t and predicted noise
             predicted_compound_emb = self.model.scheduler.predict_start_from_noise(x_t, timesteps, predicted_noise)
             ic50_reg = self.compute_ic50_regularization(predicted_compound_emb, protein_emb, sequences)
-        else:
-            ic50_reg = torch.tensor(0.0, device=self.device)
+        
+        # SMILES validation regularization (optional)
+        if (self.use_smiles_validation and 
+            self.step % self.config.get('smiles_validation_freq', 50) == 0):
+            # Reconstruct clean compound embeddings for SMILES validation
+            x_t = self.model.scheduler.q_sample(compound_emb, timesteps, noise)
+            predicted_compound_emb = self.model.scheduler.predict_start_from_noise(x_t, timesteps, predicted_noise)
+            smiles_validation_loss = self.calculate_smiles_validation_loss(predicted_compound_emb)
+            smiles_validation_loss = self.smiles_validation_weight * smiles_validation_loss
             
         # Total loss
-        total_loss = self.diffusion_weight * diffusion_loss + ic50_reg
+        total_loss = self.diffusion_weight * diffusion_loss + ic50_reg + smiles_validation_loss
         
         # Backward pass
         self.optimizer.zero_grad()
@@ -321,7 +533,7 @@ class DiffusionTrainer:
         
         self.optimizer.step()
         
-        return diffusion_loss.item(), ic50_reg.item()
+        return diffusion_loss.item(), ic50_reg.item(), smiles_validation_loss.item()
         
     def validate(self) -> float:
         """Validation step."""
@@ -355,22 +567,25 @@ class DiffusionTrainer:
             # Training
             epoch_diffusion_loss = 0.0
             epoch_ic50_loss = 0.0
+            epoch_smiles_loss = 0.0
             num_batches = 0
             
             progress_bar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.config['num_epochs']}")
             
             for batch in progress_bar:
-                diffusion_loss, ic50_loss = self.train_step(batch)
+                diffusion_loss, ic50_loss, smiles_loss = self.train_step(batch)
                 
                 epoch_diffusion_loss += diffusion_loss
                 epoch_ic50_loss += ic50_loss
+                epoch_smiles_loss += smiles_loss
                 num_batches += 1
                 self.step += 1
                 
                 # Update progress bar
                 progress_bar.set_postfix({
                     'diff_loss': f"{diffusion_loss:.4f}",
-                    'ic50_loss': f"{ic50_loss:.4f}"
+                    'ic50_loss': f"{ic50_loss:.4f}",
+                    'smiles_loss': f"{smiles_loss:.4f}"
                 })
                 
                 # Log to wandb
@@ -378,9 +593,10 @@ class DiffusionTrainer:
                     wandb.log({
                         'train/diffusion_loss': diffusion_loss,
                         'train/ic50_loss': ic50_loss,
-                        'train/total_loss': diffusion_loss + ic50_loss,
+                        'train/smiles_loss': smiles_loss,
+                        'train/total_loss': diffusion_loss + ic50_loss + smiles_loss,
                         'train/learning_rate': self.optimizer.param_groups[0]['lr'],
-                        'step': self.step
+                        'train/step': self.step
                     })
                     
             # Validation
@@ -392,14 +608,17 @@ class DiffusionTrainer:
             # Log epoch metrics
             avg_diffusion_loss = epoch_diffusion_loss / num_batches
             avg_ic50_loss = epoch_ic50_loss / num_batches
+            avg_smiles_loss = epoch_smiles_loss / num_batches
             
             print(f"Epoch {epoch+1}: Train Diffusion Loss: {avg_diffusion_loss:.4f}, "
-                  f"IC50 Loss: {avg_ic50_loss:.4f}, Val Loss: {val_loss:.4f}")
+                  f"IC50 Loss: {avg_ic50_loss:.4f}, SMILES Loss: {avg_smiles_loss:.4f}, "
+                  f"Val Loss: {val_loss:.4f}")
                   
             if self.config['use_wandb']:
                 wandb.log({
                     'epoch/train_diffusion_loss': avg_diffusion_loss,
                     'epoch/train_ic50_loss': avg_ic50_loss,
+                    'epoch/train_smiles_loss': avg_smiles_loss,
                     'epoch/val_loss': val_loss,
                     'epoch': epoch
                 })
