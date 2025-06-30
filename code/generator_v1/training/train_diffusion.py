@@ -264,7 +264,9 @@ class DiffusionTrainer:
             if len(embeddings_np) >= 2:
                 try:
                     first_two_embeddings = embeddings_np[:2]
-                    sample_smiles = self.decoder(first_two_embeddings)
+                    # Convert to torch tensor for decoder
+                    first_two_tensor = torch.FloatTensor(first_two_embeddings)
+                    sample_smiles = self.decoder(first_two_tensor)
                     if isinstance(sample_smiles, list):
                         for i, smiles in enumerate(sample_smiles):
                             print(f"Sample SMILES {i}: {smiles[:80]}{'...' if len(smiles) > 80 else ''}")
@@ -276,7 +278,9 @@ class DiffusionTrainer:
             for i in range(0, len(embeddings_np), batch_size):
                 batch_embeddings = embeddings_np[i:i+batch_size]
                 try:
-                    batch_smiles = self.decoder(batch_embeddings)
+                    # Convert to torch tensor for decoder
+                    batch_tensor = torch.FloatTensor(batch_embeddings)
+                    batch_smiles = self.decoder(batch_tensor)
                     if isinstance(batch_smiles, list):
                         all_smiles.extend(batch_smiles)
                     else:
