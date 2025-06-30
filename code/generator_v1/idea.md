@@ -17,16 +17,16 @@ Design a diffusion model that generates optimal ligands for given protein sequen
 ### Model Workflow
 
 #### Phase 1: Preprocessing & Database Creation
-1. Load IC50 dataset and extract unique molecules
+1. Load IC50 dataset and extract unique protiens
 2. Generate ProtBERT embeddings (E1) for all protein sequences
 3. Generate Pseq2Sites embeddings (Es) for all protein sequences  
-4. Encode all SMILES using smi-TED
+4. Encode all SMILES using smi-TED and keep top m (=3) ligands for each protien
 5. Store in FAISS vector database with cosine similarity indexing
 
 #### Phase 2: Retrieval-Augmented Generation
 **Input**: New protein sequence
 1. Generate E1 (ProtBERT) and Es (Pseq2Sites) for input protein
-2. Retrieve top-k similar compounds using: `argmax(alpha * sim(Es) + (1-alpha) * sim(E1))`
+2. Retrieve top-k similar protiens using: `argmax(alpha * sim(Es) + (1-alpha) * sim(E1))` use any 1 of the m smiles for that protien randomly
 3. Encode retrieved SMILES using smi-TED
 4. Compute mean of top-k compound embeddings as diffusion starting point
 

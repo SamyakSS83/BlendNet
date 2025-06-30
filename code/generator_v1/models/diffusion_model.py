@@ -362,7 +362,9 @@ class ProteinLigandDiffusion(nn.Module):
     def sample(self,
                protein_condition: torch.Tensor,
                initial_compound: Optional[torch.Tensor] = None,
-               num_samples: int = 1) -> torch.Tensor:
+               num_samples: int = 1,
+               guidance_scale: float = 1.0,
+               num_inference_steps: Optional[int] = None) -> torch.Tensor:
         """
         Sample new compounds given protein condition.
         
@@ -370,12 +372,21 @@ class ProteinLigandDiffusion(nn.Module):
             protein_condition: Protein embeddings [batch_size, protbert_dim + pseq2sites_dim]
             initial_compound: Initial compound embedding [batch_size, compound_dim] (optional)
             num_samples: Number of samples to generate
+            guidance_scale: Guidance scale for conditioning (default: 1.0, no guidance)
+            num_inference_steps: Number of denoising steps (default: uses scheduler default)
             
         Returns:
             Generated compound embeddings [batch_size * num_samples, compound_dim]
         """
         batch_size = protein_condition.shape[0]
         device = protein_condition.device
+        
+        # Use specified inference steps or scheduler default
+        if num_inference_steps is None:
+            num_inference_steps = self.scheduler.num_timesteps
+        else:
+            # Adjust the timestep range if custom inference steps
+            num_inference_steps = min(num_inference_steps, self.scheduler.num_timesteps)
         
         # Repeat protein condition for multiple samples
         protein_condition = protein_condition.repeat_interleave(num_samples, dim=0)
@@ -389,12 +400,21 @@ class ProteinLigandDiffusion(nn.Module):
         else:
             x = torch.randn(batch_size * num_samples, self.compound_dim, device=device)
             
-        # Reverse diffusion
-        for t_idx in reversed(range(self.scheduler.num_timesteps)):
+        # Reverse diffusion with custom inference steps
+        step_size = self.scheduler.num_timesteps // num_inference_steps
+        timesteps = list(range(0, self.scheduler.num_timesteps, step_size))[:num_inference_steps]
+        
+        for t_idx in reversed(timesteps):
             t = torch.full((batch_size * num_samples,), t_idx, device=device, dtype=torch.long)
             
             # Predict noise
             predicted_noise = self.model(x, t, protein_condition)
+            
+            # Apply guidance if specified
+            if guidance_scale != 1.0:
+                # Simple guidance: amplify the conditioning effect
+                uncond_noise = self.model(x, t, torch.zeros_like(protein_condition))
+                predicted_noise = uncond_noise + guidance_scale * (predicted_noise - uncond_noise)
             
             # Compute previous sample
             alpha_t = self.scheduler.alphas[t_idx]

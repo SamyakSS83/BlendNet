@@ -608,6 +608,22 @@ class DataPreprocessor:
         print("Complete preprocessing pipeline finished!")
         return train_data, test_data
 
+    def get_protein_embeddings(self, sequences: List[str]) -> Dict[str, np.ndarray]:
+        """
+        Convenient wrapper to get protein embeddings.
+        
+        Args:
+            sequences: List of protein sequences
+            
+        Returns:
+            Dictionary with 'protbert' and 'pseq2sites' embeddings
+        """
+        protbert_embs, pseq2sites_embs = self.generate_protein_embeddings(sequences)
+        return {
+            'protbert': protbert_embs,
+            'pseq2sites': pseq2sites_embs
+        }
+        
 def main():
     """Main preprocessing pipeline."""
     
