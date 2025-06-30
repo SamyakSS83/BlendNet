@@ -221,8 +221,14 @@ class ProteinLigandEmbedder:
             batch_smiles = unique_smiles[i:i+batch_size]
             try:
                 batch_embeddings = self.smi_ted.encode(batch_smiles)
-                if isinstance(batch_embeddings, torch.Tensor):
+                
+                # Handle different output types from smi-TED encode
+                if hasattr(batch_embeddings, 'values'):  # DataFrame
+                    batch_embeddings = batch_embeddings.values
+                elif isinstance(batch_embeddings, torch.Tensor):
                     batch_embeddings = batch_embeddings.cpu().numpy()
+                # If already numpy array, keep as is
+                
                 compound_embeddings.extend(batch_embeddings)
             except Exception as e:
                 logger.warning(f"Failed to encode batch {i//batch_size}: {e}")

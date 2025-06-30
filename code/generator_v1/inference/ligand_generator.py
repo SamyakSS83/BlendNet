@@ -256,8 +256,13 @@ class LigandGenerator:
         try:
             # Encode using smi-TED
             embedding = self.smi_ted.encode([smiles])
-            if isinstance(embedding, torch.Tensor):
+            
+            # Handle different output types from smi-TED encode
+            if hasattr(embedding, 'values'):  # DataFrame
+                embedding = embedding.values
+            elif isinstance(embedding, torch.Tensor):
                 embedding = embedding.cpu().numpy()
+            # If already numpy array, keep as is
             
             return embedding[0]  # Return single embedding
             
