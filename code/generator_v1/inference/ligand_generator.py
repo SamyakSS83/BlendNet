@@ -26,13 +26,19 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../materials.smi-ted
 try:
     from models.diffusion_model import ProteinLigandDiffusion
     from preprocess.data_preprocessor import DataPreprocessor
-    from utils.smiles_validator import SMILESValidator
 except ImportError as e:
     logging.warning(f"Import error: {e}")
 
+# Import SMILES validator
+try:
+    from utils.smiles_validator import SMILESValidator
+except ImportError as e:
+    logging.warning(f"SMILES validator import error: {e}")
+    SMILESValidator = None
+
 # Import smi-TED with correct path
 try:
-    sys.path.append('/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/training/')
+    sys.path.append(os.path.join(os.path.dirname(__file__), '../../materials.smi-ted/smi-ted/inference/'))
     from smi_ted_light.load import load_smi_ted
 except ImportError as e:
     logging.warning(f"smi-TED import error: {e}")
@@ -99,7 +105,7 @@ class LigandGenerator:
         try:
             # Load smi-TED
             if load_smi_ted is not None:
-                smi_ted_path = '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted'
+                smi_ted_path = '/home/sarvesh/scratch/GS/samyak/.Blendnet/materials.smi-ted'
                 self.smi_ted = load_smi_ted(
                     folder=smi_ted_path,
                     ckpt_filename="smi-ted-Light_40.pt"
@@ -121,8 +127,12 @@ class LigandGenerator:
             self.data_preprocessor = None
             
         # Initialize SMILES validator
-        self.smiles_validator = SMILESValidator()
-        logger.info("✅ SMILES validator initialized")
+        if SMILESValidator is not None:
+            self.smiles_validator = SMILESValidator()
+            logger.info("✅ SMILES validator initialized")
+        else:
+            logger.warning("SMILES validator not available")
+            self.smiles_validator = None
         
     def generate_protein_embeddings(self, protein_sequence: str) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -360,13 +370,13 @@ class LigandGenerator:
                     }
                     
                     # Validate SMILES
-                    if filter_invalid:
+                    if filter_invalid and self.smiles_validator is not None:
                         if not self.smiles_validator.is_valid(smiles):
                             results['filtered_count'] += 1
                             continue
                             
                     # Check if organic
-                    if filter_nonorganic:
+                    if filter_nonorganic and self.smiles_validator is not None:
                         if not self.smiles_validator.is_organic(smiles):
                             results['filtered_count'] += 1
                             continue
