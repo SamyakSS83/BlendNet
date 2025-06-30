@@ -183,35 +183,77 @@ class DiffusionTrainer:
                                    protein_embeddings: torch.Tensor,
                                    sequences: List[str]) -> torch.Tensor:
         """Compute IC50 regularization term."""
+        print(f"DEBUG: IC50 regularization called")
+        print(f"DEBUG: ic50_predictor is None: {self.ic50_predictor is None}")
+        print(f"DEBUG: smi_ted is None: {self.smi_ted is None}")
+        print(f"DEBUG: ic50_weight: {self.ic50_weight}")
+        
         if self.ic50_predictor is None:
+            print("DEBUG: IC50 predictor is None, returning 0")
+            return torch.tensor(0.0, device=self.device)
+            
+        if self.smi_ted is None:
+            print("DEBUG: smi-TED is None, returning 0")
             return torch.tensor(0.0, device=self.device)
             
         regularization_loss = torch.tensor(0.0, device=self.device)
         batch_size = generated_embeddings.shape[0]
         
+        print(f"DEBUG: Generated embeddings shape: {generated_embeddings.shape}")
+        print(f"DEBUG: Generated embeddings type: {type(generated_embeddings)}")
+        print(f"DEBUG: Generated embeddings device: {generated_embeddings.device if hasattr(generated_embeddings, 'device') else 'No device attr'}")
+        
         # Decode embeddings to SMILES
         try:
             with torch.no_grad():
-                # Ensure embeddings are numpy arrays for smi-TED decoding
+                # Ensure embeddings are on CPU for smi-TED decoding and are torch tensors
                 if isinstance(generated_embeddings, torch.Tensor):
-                    embedding_numpy = generated_embeddings.detach().cpu().numpy()
-                else:
-                    embedding_numpy = generated_embeddings
+                    print("DEBUG: Converting tensor to CPU")
+                    embedding_cpu = generated_embeddings.detach().cpu()
+                    print(f"DEBUG: CPU embedding type: {type(embedding_cpu)}")
+                    print(f"DEBUG: CPU embedding device: {embedding_cpu.device}")
                     
-                decoded_smiles = self.smi_ted.decode(embedding_numpy)
+                    # Ensure tensor is contiguous and has correct dtype
+                    if not embedding_cpu.is_contiguous():
+                        embedding_cpu = embedding_cpu.contiguous()
+                    if embedding_cpu.dtype != torch.float32:
+                        embedding_cpu = embedding_cpu.float()
+                        
+                else:
+                    print("DEBUG: Input is not a tensor")
+                    embedding_cpu = generated_embeddings
+                    
+                print("DEBUG: About to call smi_ted.decode")
+                print(f"DEBUG: Embedding shape for decode: {embedding_cpu.shape}")
+                print(f"DEBUG: Embedding dtype: {embedding_cpu.dtype}")
+                print(f"DEBUG: Embedding is_contiguous: {embedding_cpu.is_contiguous()}")
+                
+                decoded_smiles = self.smi_ted.decode(embedding_cpu)
+                print(f"DEBUG: Decoded {len(decoded_smiles)} SMILES")
                 
             valid_count = 0
             for i, (smiles, sequence) in enumerate(zip(decoded_smiles, sequences)):
                 try:
+                    # Skip empty or invalid SMILES
+                    if not smiles or len(smiles.strip()) == 0:
+                        print(f"DEBUG: Skipping empty SMILES at index {i}")
+                        continue
+                        
+                    print(f"DEBUG: Predicting IC50 for SMILES {i}: {smiles[:50]}...")
+                    
                     # Predict IC50
                     result = self.ic50_predictor.predict(smiles, sequence)
                     ic50_pred = result['IC50']
+                    
+                    print(f"DEBUG: IC50 prediction result: {ic50_pred} (type: {type(ic50_pred)})")
                     
                     # Add regularization term: lambda / ic50 (encourage lower IC50)
                     if ic50_pred > 0:
                         # Ensure ic50_pred is a float, not tensor
                         if isinstance(ic50_pred, torch.Tensor):
                             ic50_value = float(ic50_pred.cpu().item())
+                        elif isinstance(ic50_pred, np.ndarray):
+                            ic50_value = float(ic50_pred.item())
                         else:
                             ic50_value = float(ic50_pred)
                             
@@ -219,17 +261,25 @@ class DiffusionTrainer:
                                               device=self.device, dtype=torch.float32)
                         regularization_loss += reg_term
                         valid_count += 1
+                        print(f"DEBUG: Added regularization term: {reg_term.item()}")
                         
                 except Exception as e:
                     # Skip invalid SMILES or prediction errors
                     print(f"IC50 prediction failed for sample {i}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     continue
                     
             if valid_count > 0:
                 regularization_loss = regularization_loss / valid_count
+                print(f"DEBUG: Final regularization loss: {regularization_loss.item()}")
+            else:
+                print("DEBUG: No valid IC50 predictions")
                 
         except Exception as e:
             print(f"IC50 regularization failed: {e}")
+            import traceback
+            traceback.print_exc()
             regularization_loss = torch.tensor(0.0, device=self.device)
             
         return regularization_loss
@@ -250,7 +300,12 @@ class DiffusionTrainer:
         
         # IC50 regularization (optional)
         if self.config['use_ic50_regularization'] and self.step % self.config['ic50_regularization_freq'] == 0:
-            ic50_reg = self.compute_ic50_regularization(predicted_noise, protein_emb, sequences)
+            # Reconstruct clean compound embeddings from noisy input and predicted noise
+            # First, we need to reconstruct the noisy input x_t
+            x_t = self.model.scheduler.q_sample(compound_emb, timesteps, noise)
+            # Then predict x_0 from x_t and predicted noise
+            predicted_compound_emb = self.model.scheduler.predict_start_from_noise(x_t, timesteps, predicted_noise)
+            ic50_reg = self.compute_ic50_regularization(predicted_compound_emb, protein_emb, sequences)
         else:
             ic50_reg = torch.tensor(0.0, device=self.device)
             
