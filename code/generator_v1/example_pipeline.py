@@ -33,7 +33,7 @@ def run_complete_pipeline(test_mode=False, num_epochs=50, disable_ic50=False, ba
     # Configuration
     config = {
         'data_paths': {
-            'ic50_data': '/home/threesamyak/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv',
+            'ic50_data': '/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/BindingDB/IC50_data.tsv',
             'smi_ted_path': os.path.abspath('../../materials.smi-ted/smi-ted/inference/smi_ted_light'),
             'smi_ted_ckpt': 'smi-ted-Light_40.pt'
         },

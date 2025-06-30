@@ -19,7 +19,7 @@ The pipeline consists of six main components:
 
 ```bash
 # Clone repository and navigate to generator directory
-cd /home/threesamyak/sura/plm_sura/BlendNet/code/generator_v1
+cd /home/sarvesh/sura/plm_sura/BlendNet/code/generator_v1
 
 # Install dependencies
 pip install -r requirements.txt

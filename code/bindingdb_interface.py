@@ -195,8 +195,8 @@ if __name__ == "__main__":
     
     iface = BindingDBInterface(
         config_path="BindingDB.yml",
-        ki_weights="/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
-        ic50_weights="/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
+        ki_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
+        ic50_weights="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
         device="cuda:0"
     )
 

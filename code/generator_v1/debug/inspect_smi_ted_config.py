@@ -8,7 +8,7 @@ import sys
 import torch
 
 # Add parent directories to path
-sys.path.append('/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light')
+sys.path.append('/home/sarvesh/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light')
 
 from load import load_smi_ted
 
@@ -16,7 +16,7 @@ def inspect_smi_ted():
     print("Loading smi-TED model...")
     
     # Load smi-TED
-    smi_ted_path = '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light'
+    smi_ted_path = '/home/sarvesh/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light'
     model = load_smi_ted(
         folder=smi_ted_path,
         ckpt_filename="smi-ted-Light_40.pt"

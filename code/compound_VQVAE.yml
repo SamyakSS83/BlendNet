@@ -1,6 +1,6 @@
 Path:
-    dataset_path: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/input_data/compound/MgraphDatanonH.pt"
-    output_model_file: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/Model_checkpoint/compound/"
+    dataset_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/compound/MgraphDatanonH.pt"
+    output_model_file: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/Model_checkpoint/compound/"
 
 Train:
     device: 0

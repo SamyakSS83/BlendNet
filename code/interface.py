@@ -109,8 +109,8 @@ predictor = BindingAffinityPredictor(
     pocket_cfg="pocket_extractor_config.yml",
     compound_cfg="compound_VQVAE.yml",
     interaction_cfg="BindingDB.yml",
-    ki_model_path="/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
-    ic50_model_path="/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
+    ki_model_path="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/Ki/random_split/CV1/BlendNet_S.pth",
+    ic50_model_path="/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/BindingDB/IC50/random_split/CV1/BlendNet_S.pth",
     device="cuda:0"
 )
 

@@ -1,9 +1,9 @@
 Path:
-    training: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/input_data/PDB/BS/Training_BS_labels.tsv"
-    prot_feats: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/input_data/PDB/BS/Training_BS_protein_features.pkl"
+    training: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/PDB/BS/Training_BS_labels.tsv"
+    prot_feats: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/input_data/PDB/BS/Training_BS_protein_features.pkl"
 
-    save_path: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/pocket/"
-    check_point: "/home/threesamyak/scratch/GS/negroni_data/Blendnet/model_checkpoint/pocket/CV1/pocket_extractor.pth"
+    save_path: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/pocket/"
+    check_point: "/home/sarvesh/scratch/GS/negroni_data/Blendnet/model_checkpoint/pocket/CV1/pocket_extractor.pth"
     
 Train:
     epochs: 100
