@@ -12,7 +12,7 @@ from rdkit.Chem import Descriptors
 
 # Add parent directories to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../../materials.smi-ted/smi-ted/'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../materials.smi-ted/smi-ted/'))
 
 from models.diffusion_model import ProteinLigandDiffusion
 from database.vector_database import ProteinLigandVectorDB
@@ -26,7 +26,7 @@ class LigandGenerator:
     def __init__(self,
                  diffusion_checkpoint: str,
                  vector_db_path: str,
-                 smi_ted_path: str = "../../../materials.smi-ted/smi-ted/inference/smi_ted_light",
+                 smi_ted_path: str = "../../materials.smi-ted/smi-ted/inference/smi_ted_light",
                  smi_ted_ckpt: str = "smi-ted-Light_40.pt",
                  device: str = "cuda"):
         """
