@@ -94,7 +94,8 @@ class RetrievalAugmentedDataset(Dataset):
                  faiss_index,
                  protein_embeddings: Dict,
                  k_similar: int = 5,
-                 alpha: float = 0.5):
+                 alpha: float = 0.5,
+                 filter_sequences: List[str] = None):
         """
         Initialize retrieval-augmented dataset.
         
@@ -105,17 +106,25 @@ class RetrievalAugmentedDataset(Dataset):
             protein_embeddings: Dict with 'protbert' and 'pseq2sites' embeddings
             k_similar: Number of similar proteins to retrieve
             alpha: Weight for similarity metric (kept for compatibility, but FAISS uses concatenated embeddings)
+            filter_sequences: If provided, only create training pairs for these sequences
         """
         self.protein_database = protein_database
-        self.protein_sequences = protein_sequences
+        self.protein_sequences = protein_sequences  # Full list for FAISS index consistency
         self.faiss_index = faiss_index
         self.protein_embeddings = protein_embeddings
         self.k_similar = k_similar
         self.alpha = alpha
         
+        # Determine which sequences to use for training pairs
+        sequences_to_use = filter_sequences if filter_sequences is not None else protein_sequences
+        
         # Create list of all protein-ligand pairs for training
         self.training_pairs = []
-        for seq in protein_sequences:
+        for seq in sequences_to_use:
+            if seq not in protein_database:
+                logger.warning(f"Sequence not found in protein database: {seq[:50]}...")
+                continue
+                
             protein_data = protein_database[seq]
             for ligand in protein_data['ligands']:
                 self.training_pairs.append({
@@ -127,7 +136,7 @@ class RetrievalAugmentedDataset(Dataset):
                     'target_ic50': ligand['ic50']
                 })
                 
-        logger.info(f"Dataset created with {len(self.training_pairs)} training pairs")
+        logger.info(f"Dataset created with {len(self.training_pairs)} training pairs from {len(sequences_to_use)} proteins")
         
     def __len__(self):
         return len(self.training_pairs)
@@ -164,17 +173,34 @@ class RetrievalAugmentedDataset(Dataset):
         # Search for top-k similar proteins
         similarities, indices = self.faiss_index.search(query_combined, self.k_similar + 1)  # +1 to exclude self
         
-        # Remove self if present
+        # Remove self if present and ensure indices are within bounds
         indices = indices[0]
-        if query_protein_idx in indices:
-            indices = indices[indices != query_protein_idx][:self.k_similar]
+        max_index = len(self.protein_sequences) - 1
+        
+        # Filter out invalid indices
+        valid_indices = indices[indices <= max_index]
+        
+        if query_protein_idx in valid_indices:
+            valid_indices = valid_indices[valid_indices != query_protein_idx][:self.k_similar]
         else:
-            indices = indices[:self.k_similar]
+            valid_indices = valid_indices[:self.k_similar]
+            
+        if len(valid_indices) == 0:
+            logger.warning(f"No valid similar proteins found for index {query_protein_idx}")
+            return np.array([np.random.randn(768)])  # Return random fallback
             
         # Collect compound embeddings from retrieved proteins
         retrieved_embeddings = []
-        for protein_idx in indices:
+        for protein_idx in valid_indices:
+            if protein_idx >= len(self.protein_sequences):
+                logger.warning(f"Skipping invalid protein index {protein_idx} (max: {len(self.protein_sequences)-1})")
+                continue
+                
             similar_seq = self.protein_sequences[protein_idx]
+            if similar_seq not in self.protein_database:
+                logger.warning(f"Protein sequence not found in database: {similar_seq[:50]}...")
+                continue
+                
             similar_protein = self.protein_database[similar_seq]
             
             # Randomly select 1 ligand from the m ligands of this protein
@@ -327,27 +353,31 @@ class ProteinLigandDiffusionTrainer:
     def create_dataloaders(self, train_split: float = 0.8, k_similar: int = 5):
         """Create train and validation dataloaders."""
         # Split protein sequences for train/val
-        random.shuffle(self.protein_sequences)
-        split_idx = int(len(self.protein_sequences) * train_split)
+        shuffled_sequences = self.protein_sequences.copy()
+        random.shuffle(shuffled_sequences)
+        split_idx = int(len(shuffled_sequences) * train_split)
         
-        train_sequences = self.protein_sequences[:split_idx]
-        val_sequences = self.protein_sequences[split_idx:]
+        train_sequences = shuffled_sequences[:split_idx]
+        val_sequences = shuffled_sequences[split_idx:]
         
-        # Create datasets
+        # Create datasets - pass the FULL protein sequence list to maintain FAISS index consistency
+        # Each dataset will filter its training pairs based on the train/val sequences
         train_dataset = RetrievalAugmentedDataset(
             protein_database=self.protein_database,
-            protein_sequences=train_sequences,
+            protein_sequences=self.protein_sequences,  # Full list for FAISS index consistency
             faiss_index=self.faiss_index,
             protein_embeddings=self.protein_embeddings,
-            k_similar=k_similar
+            k_similar=k_similar,
+            filter_sequences=train_sequences  # Only train on these sequences
         )
         
         val_dataset = RetrievalAugmentedDataset(
             protein_database=self.protein_database,
-            protein_sequences=val_sequences,
+            protein_sequences=self.protein_sequences,  # Full list for FAISS index consistency
             faiss_index=self.faiss_index,
             protein_embeddings=self.protein_embeddings,
-            k_similar=k_similar
+            k_similar=k_similar,
+            filter_sequences=val_sequences  # Only validate on these sequences
         )
         
         # Create dataloaders
