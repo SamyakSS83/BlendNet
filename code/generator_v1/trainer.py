@@ -249,10 +249,10 @@ class ProteinLigandDiffusionTrainer:
         self.protein_embeddings = protein_embeddings
         
         # Initialize model
-        protein_dim = config['protbert_dim'] + config['pseq2sites_dim']
         self.model = ProteinLigandDiffusion(
             compound_dim=config['compound_dim'],
-            protein_dim=protein_dim,
+            protbert_dim=config['protbert_dim'],
+            pseq2sites_dim=config['pseq2sites_dim'],
             num_timesteps=config['num_timesteps'],
             hidden_dim=config['hidden_dim'],
             num_layers=config['num_layers'],
