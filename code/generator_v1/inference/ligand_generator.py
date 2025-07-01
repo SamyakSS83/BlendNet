@@ -121,11 +121,24 @@ class LigandGenerator:
             self.smi_ted = None
             
         try:
-            # Initialize data preprocessor for protein embeddings
-            self.data_preprocessor = DataPreprocessor()
-            logger.info("✅ Data preprocessor initialized")
+            # For inference, we don't need the full DataPreprocessor
+            # We'll use direct protein embedding generation
+            from transformers import BertTokenizer, BertModel
+            
+            # Initialize ProtBERT
+            self.protbert_tokenizer = BertTokenizer.from_pretrained("Rostlab/prot_bert", do_lower_case=False)
+            self.protbert_model = BertModel.from_pretrained("Rostlab/prot_bert").to(self.device)
+            self.protbert_model.eval()
+            
+            # Initialize Pseq2Sites
+            sys.path.append('../../')  # Add root path for modules
+            from modules.pocket_modules.pseq2sites_embeddings import Pseq2SitesEmbeddings
+            self.pseq2sites = Pseq2SitesEmbeddings(device=self.device)
+            
+            logger.info("✅ Protein embedding models initialized")
+            self.data_preprocessor = True  # Mark as available
         except Exception as e:
-            logger.warning(f"Failed to initialize data preprocessor: {e}")
+            logger.warning(f"Failed to initialize protein embedding models: {e}")
             self.data_preprocessor = None
             
         # Initialize SMILES validator
@@ -149,13 +162,30 @@ class LigandGenerator:
         logger.info("Generating protein embeddings...")
         
         if self.data_preprocessor is None:
-            raise RuntimeError("Data preprocessor not initialized")
+            raise RuntimeError("Protein embedding models not initialized")
             
         try:
-            # Generate ProtBERT and Pseq2Sites embeddings
-            embeddings = self.data_preprocessor.get_protein_embeddings([protein_sequence])
-            protbert_emb = embeddings['protbert'][0]  # [protbert_dim]
-            pseq2sites_emb = embeddings['pseq2sites'][0]  # [pseq2sites_dim]
+            # Generate ProtBERT embedding
+            with torch.no_grad():
+                # Add spaces between amino acids for ProtBERT
+                spaced_sequence = ' '.join(list(protein_sequence))
+                
+                # Tokenize and encode
+                inputs = self.protbert_tokenizer(
+                    spaced_sequence, 
+                    return_tensors="pt", 
+                    padding=True, 
+                    truncation=True, 
+                    max_length=1024
+                ).to(self.device)
+                
+                # Get ProtBERT embedding
+                outputs = self.protbert_model(**inputs)
+                protbert_emb = outputs.last_hidden_state.mean(dim=1).squeeze().cpu().numpy()
+                
+            # Generate Pseq2Sites embedding
+            with torch.no_grad():
+                pseq2sites_emb = self.pseq2sites.get_embeddings([protein_sequence])[0].cpu().numpy()
             
             logger.info(f"✅ Generated embeddings: ProtBERT {protbert_emb.shape}, Pseq2Sites {pseq2sites_emb.shape}")
             return protbert_emb, pseq2sites_emb
