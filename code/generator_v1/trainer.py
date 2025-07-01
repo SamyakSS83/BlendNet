@@ -101,10 +101,10 @@ class RetrievalAugmentedDataset(Dataset):
         Args:
             protein_database: Database of proteins and their ligands
             protein_sequences: List of protein sequences (same order as FAISS index)
-            faiss_index: FAISS index for protein similarity search
+            faiss_index: FAISS index for protein similarity search (built with concatenated embeddings)
             protein_embeddings: Dict with 'protbert' and 'pseq2sites' embeddings
             k_similar: Number of similar proteins to retrieve
-            alpha: Weight for similarity metric (alpha * Es + (1-alpha) * E1)
+            alpha: Weight for similarity metric (kept for compatibility, but FAISS uses concatenated embeddings)
         """
         self.protein_database = protein_database
         self.protein_sequences = protein_sequences
@@ -137,7 +137,7 @@ class RetrievalAugmentedDataset(Dataset):
         Retrieve compound embeddings from top-k similar proteins.
         
         According to idea.md:
-        1. Get top-k similar proteins using: argmax(alpha * sim(Es) + (1-alpha) * sim(E1))
+        1. Get top-k similar proteins using concatenated embeddings [ProtBERT || Pseq2Sites]
         2. For each protein, randomly select 1 of its m ligands
         3. Return compound embeddings for mean computation
         
@@ -152,8 +152,9 @@ class RetrievalAugmentedDataset(Dataset):
         query_protbert = self.protein_embeddings['protbert'][query_protein_idx:query_protein_idx+1]
         query_pseq2sites = self.protein_embeddings['pseq2sites'][query_protein_idx:query_protein_idx+1]
         
-        # Combine according to similarity metric from idea.md
-        query_combined = self.alpha * query_pseq2sites + (1 - self.alpha) * query_protbert
+        # Concatenate embeddings (to match FAISS index structure)
+        # The FAISS index was built with concatenated embeddings, not weighted combination
+        query_combined = np.concatenate([query_protbert, query_pseq2sites], axis=1)
         query_combined = query_combined.astype(np.float32)
         
         # Normalize for cosine similarity
