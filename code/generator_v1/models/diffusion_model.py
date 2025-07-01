@@ -328,6 +328,11 @@ class ProteinLigandDiffusion(nn.Module):
         
         self.compound_dim = compound_dim
         
+    @property
+    def num_timesteps(self):
+        """Convenience property to access scheduler's num_timesteps."""
+        return self.scheduler.num_timesteps
+        
     def forward(self, 
                 x_start: torch.Tensor,
                 protein_condition: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

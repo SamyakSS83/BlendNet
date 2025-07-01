@@ -492,10 +492,10 @@ class ProteinLigandDiffusionTrainer:
         noise = torch.randn_like(target_compound_emb)
         
         # Noisy version of target embedding
-        noisy_target = self.model.q_sample(target_compound_emb, timesteps, noise)
+        noisy_target = self.model.scheduler.q_sample(target_compound_emb, timesteps, noise)
         
-        # Model prediction (predicts noise)
-        predicted_noise = self.model(noisy_target, protein_emb, timesteps)
+        # Model prediction (predicts noise) - call the U-Net directly
+        predicted_noise = self.model.model(noisy_target, timesteps, protein_emb)
         
         # Diffusion loss (MSE between predicted and actual noise)
         diffusion_loss = nn.MSELoss()(predicted_noise, noise)
@@ -508,13 +508,13 @@ class ProteinLigandDiffusionTrainer:
         if (self.config.get('use_ic50_regularization', False) and 
             self.step % self.config.get('ic50_regularization_freq', 10) == 0):
             # Predict clean compound embedding
-            predicted_clean = self.model.predict_start_from_noise(noisy_target, timesteps, predicted_noise)
+            predicted_clean = self.model.scheduler.predict_start_from_noise(noisy_target, timesteps, predicted_noise)
             ic50_loss = self.compute_ic50_regularization(predicted_clean, protein_sequences)
             
         # SMILES validation loss
         if (self.use_smiles_validation and 
             self.step % self.config.get('smiles_validation_freq', 50) == 0):
-            predicted_clean = self.model.predict_start_from_noise(noisy_target, timesteps, predicted_noise)
+            predicted_clean = self.model.scheduler.predict_start_from_noise(noisy_target, timesteps, predicted_noise)
             smiles_loss = self.compute_smiles_validation_loss(predicted_clean)
             
         # Total loss according to idea.md
@@ -546,8 +546,8 @@ class ProteinLigandDiffusionTrainer:
                 # Forward pass
                 timesteps = torch.randint(0, self.model.num_timesteps, (target_compound_emb.shape[0],), device=self.device)
                 noise = torch.randn_like(target_compound_emb)
-                noisy_target = self.model.q_sample(target_compound_emb, timesteps, noise)
-                predicted_noise = self.model(noisy_target, protein_emb, timesteps)
+                noisy_target = self.model.scheduler.q_sample(target_compound_emb, timesteps, noise)
+                predicted_noise = self.model.model(noisy_target, timesteps, protein_emb)
                 
                 # Validation loss (only diffusion loss)
                 loss = nn.MSELoss()(predicted_noise, noise)
