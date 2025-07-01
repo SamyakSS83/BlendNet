@@ -152,6 +152,7 @@ class LigandGenerator:
     def generate_protein_embeddings(self, protein_sequence: str) -> Tuple[np.ndarray, np.ndarray]:
         """
         Generate protein embeddings for input sequence.
+        If models are not available, use sequence similarity to find closest protein.
         
         Args:
             protein_sequence: Input protein sequence
@@ -161,38 +162,58 @@ class LigandGenerator:
         """
         logger.info("Generating protein embeddings...")
         
-        if self.data_preprocessor is None:
-            raise RuntimeError("Protein embedding models not initialized")
-            
-        try:
-            # Generate ProtBERT embedding
-            with torch.no_grad():
-                # Add spaces between amino acids for ProtBERT
-                spaced_sequence = ' '.join(list(protein_sequence))
+        # First, try to generate embeddings directly if models are available
+        if self.data_preprocessor is not None:
+            try:
+                # Generate ProtBERT embedding
+                with torch.no_grad():
+                    # Add spaces between amino acids for ProtBERT
+                    spaced_sequence = ' '.join(list(protein_sequence))
+                    
+                    # Tokenize and encode
+                    inputs = self.protbert_tokenizer(
+                        spaced_sequence, 
+                        return_tensors="pt", 
+                        padding=True, 
+                        truncation=True, 
+                        max_length=1024
+                    ).to(self.device)
+                    
+                    outputs = self.protbert_model(**inputs)
+                    protbert_emb = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
+                    
+                # Generate Pseq2Sites embedding
+                pseq2sites_emb = self.pseq2sites_model.get_embeddings(protein_sequence)
                 
-                # Tokenize and encode
-                inputs = self.protbert_tokenizer(
-                    spaced_sequence, 
-                    return_tensors="pt", 
-                    padding=True, 
-                    truncation=True, 
-                    max_length=1024
-                ).to(self.device)
+                return protbert_emb.squeeze(), pseq2sites_emb.squeeze()
                 
-                # Get ProtBERT embedding
-                outputs = self.protbert_model(**inputs)
-                protbert_emb = outputs.last_hidden_state.mean(dim=1).squeeze().cpu().numpy()
-                
-            # Generate Pseq2Sites embedding
-            with torch.no_grad():
-                pseq2sites_emb = self.pseq2sites.get_embeddings([protein_sequence])[0].cpu().numpy()
+            except Exception as e:
+                logger.warning(f"Direct embedding generation failed: {e}")
+        
+        # Fallback: Use sequence similarity to find closest protein in database
+        logger.info("Using sequence similarity fallback to find closest protein...")
+        
+        # Simple sequence similarity (could be improved with alignment algorithms)
+        best_similarity = 0
+        best_idx = 0
+        
+        for i, seq in enumerate(self.protein_sequences):
+            # Simple similarity: count of matching characters / min length
+            min_len = min(len(protein_sequence), len(seq))
+            matches = sum(1 for a, b in zip(protein_sequence[:min_len], seq[:min_len]) if a == b)
+            similarity = matches / min_len
             
-            logger.info(f"✅ Generated embeddings: ProtBERT {protbert_emb.shape}, Pseq2Sites {pseq2sites_emb.shape}")
-            return protbert_emb, pseq2sites_emb
-            
-        except Exception as e:
-            logger.error(f"Failed to generate protein embeddings: {e}")
-            raise
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_idx = i
+        
+        logger.info(f"Found closest protein with {best_similarity:.3f} similarity (index {best_idx})")
+        
+        # Return embeddings of the most similar protein
+        protbert_emb = self.protein_embeddings['protbert'][best_idx]
+        pseq2sites_emb = self.protein_embeddings['pseq2sites'][best_idx]
+        
+        return protbert_emb, pseq2sites_emb
             
     def retrieve_similar_proteins(self,
                                 protbert_emb: np.ndarray,
