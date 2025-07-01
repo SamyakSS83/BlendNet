@@ -129,7 +129,10 @@ class ProteinLigandEmbedder:
         logger.info("Initializing embedding models...")
         
         # Initialize data preprocessor (contains ProtBERT and Pseq2Sites)
-        self.preprocessor = DataPreprocessor()
+        self.preprocessor = DataPreprocessor(
+            ic50_data_path=self.data_path,
+            device=self.device
+        )
         
         # Initialize smi-TED
         logger.info("Loading smi-TED...")
