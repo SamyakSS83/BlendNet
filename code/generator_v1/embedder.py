@@ -243,8 +243,8 @@ class ProteinLigandEmbedder:
         """
         Create FAISS vector database for protein similarity search.
         
-        According to idea.md, we use: argmax(alpha * sim(Es) + (1-alpha) * sim(E1))
-        where Es = Pseq2Sites, E1 = ProtBERT
+        Since ProtBERT (1024D) and Pseq2Sites (256D) have different dimensions,
+        we concatenate them instead of adding them.
         
         Args:
             protein_data: Dictionary containing protein embeddings and ligand data
@@ -259,11 +259,16 @@ class ProteinLigandEmbedder:
         protbert_embeddings = protein_data['protbert_embeddings']
         pseq2sites_embeddings = protein_data['pseq2sites_embeddings']
         
-        # Combine embeddings according to idea.md similarity metric
-        # We'll store both separately and combine during search
-        # For now, we'll create index on combined embeddings with alpha=0.5
-        alpha = 0.5
-        combined_embeddings = alpha * pseq2sites_embeddings + (1 - alpha) * protbert_embeddings
+        logger.info(f"ProtBERT embeddings shape: {protbert_embeddings.shape}")
+        logger.info(f"Pseq2Sites embeddings shape: {pseq2sites_embeddings.shape}")
+        
+        # Concatenate embeddings instead of adding (due to different dimensions)
+        # This preserves information from both embedding types
+        combined_embeddings = np.concatenate([protbert_embeddings, pseq2sites_embeddings], axis=1)
+        
+        # Store the dimensions for later use in similarity computation
+        protein_data['protbert_dim'] = protbert_embeddings.shape[1]
+        protein_data['pseq2sites_dim'] = pseq2sites_embeddings.shape[1]
         
         # Ensure embeddings are float32 and contiguous
         combined_embeddings = np.ascontiguousarray(combined_embeddings.astype(np.float32))
@@ -271,7 +276,7 @@ class ProteinLigandEmbedder:
         dimension = combined_embeddings.shape[1]
         n_proteins = combined_embeddings.shape[0]
         
-        logger.info(f"Creating index for {n_proteins} proteins with dimension {dimension}")
+        logger.info(f"Creating index for {n_proteins} proteins with combined dimension {dimension} (ProtBERT: {protbert_embeddings.shape[1]} + Pseq2Sites: {pseq2sites_embeddings.shape[1]})")
         
         # Create FAISS index
         try:
