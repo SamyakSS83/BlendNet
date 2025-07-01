@@ -9,7 +9,13 @@ This script trains the diffusion model according to idea.md architecture:
 - Includes SMILES validation for organic molecule generation
 
 Usage:
+    # Basic training (diffusion loss only)
     python run_trainer.py --embeddings_dir ./embedder_output --batch_size 32 --num_epochs 100
+    
+    # With IC50 regularization (requires weight files)
+    python run_trainer.py --embeddings_dir ./embedder_output --use_ic50_regularization \\
+                          --ic50_weights_path /path/to/ic50_weights.pth \\
+                          --ki_weights_path /path/to/ki_weights.pth
 """
 
 import argparse
@@ -66,13 +72,15 @@ def main():
     
     # Regularization parameters
     parser.add_argument("--use_ic50_regularization", action='store_true',
-                       help="Enable IC50 regularization (λ/IC50_predicted)")
+                       help="Enable IC50 regularization (requires --ic50_weights_path and --ki_weights_path)")
     parser.add_argument("--ic50_weight", type=float, default=0.1,
                        help="IC50 regularization weight (λ)")
     parser.add_argument("--ic50_regularization_freq", type=int, default=10,
                        help="Apply IC50 regularization every N steps")
     parser.add_argument("--ic50_weights_path", type=str,
-                       help="Path to IC50 predictor weights")
+                       help="Path to IC50 predictor weights (required for IC50 regularization)")
+    parser.add_argument("--ki_weights_path", type=str,
+                       help="Path to Ki predictor weights (required for IC50 regularization)")
     
     # SMILES validation parameters
     parser.add_argument("--use_smiles_validation", action='store_true',
@@ -134,6 +142,21 @@ def main():
     # Create checkpoint directory
     os.makedirs(args.checkpoint_dir, exist_ok=True)
     
+    # Validate IC50 regularization arguments
+    if args.use_ic50_regularization:
+        if not args.ic50_weights_path or not args.ki_weights_path:
+            logger.error("IC50 regularization requires both --ic50_weights_path and --ki_weights_path")
+            logger.error("Either provide both weight paths or disable IC50 regularization")
+            sys.exit(1)
+        
+        # Check if weight files exist
+        if not os.path.exists(args.ic50_weights_path):
+            logger.error(f"IC50 weights file not found: {args.ic50_weights_path}")
+            sys.exit(1)
+        if not os.path.exists(args.ki_weights_path):
+            logger.error(f"Ki weights file not found: {args.ki_weights_path}")
+            sys.exit(1)
+    
     logger.info("="*80)
     logger.info("PROTEIN-LIGAND DIFFUSION MODEL TRAINING")
     logger.info("="*80)
@@ -180,6 +203,7 @@ def main():
             'ic50_weight': args.ic50_weight,
             'ic50_regularization_freq': args.ic50_regularization_freq,
             'ic50_weights_path': args.ic50_weights_path,
+            'ki_weights_path': args.ki_weights_path,
             
             'use_smiles_validation': args.use_smiles_validation,
             'smiles_validation_weight': args.smiles_validation_weight,

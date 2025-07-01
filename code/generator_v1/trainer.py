@@ -322,12 +322,24 @@ class ProteinLigandDiffusionTrainer:
     def initialize_regularization_models(self):
         """Initialize IC50 predictor and smi-TED for regularization."""
         try:
-            # Initialize IC50 predictor
-            self.ic50_predictor = BindingDBInterface(
-                config_path="../BindingDB.yml",
-                ic50_weights=self.config.get('ic50_weights_path'),
-                device=self.device
-            )
+            # Check if both weight paths are provided
+            ic50_weights = self.config.get('ic50_weights_path')
+            ki_weights = self.config.get('ki_weights_path')
+            
+            if self.use_ic50_regularization and (not ic50_weights or not ki_weights):
+                logger.warning("IC50 regularization requested but weight paths not provided")
+                logger.warning("IC50 regularization will be disabled")
+                self.use_ic50_regularization = False
+                return
+                
+            # Initialize IC50 predictor only if both weights are available
+            if ic50_weights and ki_weights:
+                self.ic50_predictor = BindingDBInterface(
+                    config_path="../BindingDB.yml",
+                    ki_weights=ki_weights,
+                    ic50_weights=ic50_weights,
+                    device=self.device
+                )
             
             # Initialize smi-TED
             smi_ted_paths = [
