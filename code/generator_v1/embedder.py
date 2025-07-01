@@ -175,22 +175,10 @@ class ProteinLigandEmbedder:
         unique_sequences = list(set(sequences))
         seq_to_idx = {seq: i for i, seq in enumerate(unique_sequences)}
         
-        # Generate embeddings for unique sequences
-        protbert_embeddings = []
-        pseq2sites_embeddings = []
-        
-        for seq in tqdm(unique_sequences, desc="Generating protein embeddings"):
-            # Generate ProtBERT embedding
-            protbert_emb = self.preprocessor.get_protbert_embedding(seq)
-            protbert_embeddings.append(protbert_emb)
-            
-            # Generate Pseq2Sites embedding
-            pseq2sites_emb = self.preprocessor.get_pseq2sites_embedding(seq)
-            pseq2sites_embeddings.append(pseq2sites_emb)
-            
-        # Convert to arrays
-        protbert_embeddings = np.array(protbert_embeddings)
-        pseq2sites_embeddings = np.array(pseq2sites_embeddings)
+        # Generate embeddings for unique sequences using DataPreprocessor
+        protein_embeddings = self.preprocessor.get_protein_embeddings(unique_sequences)
+        protbert_embeddings = protein_embeddings['protbert']
+        pseq2sites_embeddings = protein_embeddings['pseq2sites']
         
         # Map back to original sequence order
         original_protbert = np.array([protbert_embeddings[seq_to_idx[seq]] for seq in sequences])
