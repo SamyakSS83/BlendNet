@@ -116,7 +116,7 @@ class LigandGenerator:
             # Load smi-TED
             if load_smi_ted is not None:
                 # Use the correct smi_ted_light directory which contains both vocab and checkpoint
-                smi_ted_path = '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light'
+                smi_ted_path = '/home/sarvesh/scratch/GS/samyak/.Blendnet/materials.smi-ted/smi-ted/inference/smi_ted_light'
                 
                 # Debug: Check if files exist
                 vocab_file = os.path.join(smi_ted_path, "bert_vocab_curated.txt")
