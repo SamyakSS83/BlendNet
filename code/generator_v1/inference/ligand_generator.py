@@ -441,6 +441,28 @@ class LigandGenerator:
                     num_inference_steps=num_inference_steps
                 )
             
+            # Debug: Add chemical validation and embedding space checks
+            logger.info("Step 6a: Validating embedding space and chemical constraints...")
+            
+            # Check if initial ligand embedding is reasonable
+            if init_embedding is not None:
+                logger.info(f"Initial embedding stats: mean={init_embedding.mean():.3f}, std={init_embedding.std():.3f}, range=({init_embedding.min():.3f}, {init_embedding.max():.3f})")
+            
+            # Check generated embeddings statistics
+            if isinstance(generated_embeddings, torch.Tensor):
+                gen_stats = generated_embeddings.cpu()
+            else:
+                gen_stats = torch.from_numpy(generated_embeddings)
+            
+            logger.info(f"Generated embeddings stats: shape={gen_stats.shape}")
+            logger.info(f"  Mean: {gen_stats.mean():.3f}, Std: {gen_stats.std():.3f}")
+            logger.info(f"  Range: ({gen_stats.min():.3f}, {gen_stats.max():.3f})")
+            
+            # Check if embeddings are in reasonable range (smi-TED embeddings typically [-5, 5])
+            if gen_stats.abs().max() > 10:
+                logger.warning(f"⚠️  Generated embeddings have extreme values! Max abs value: {gen_stats.abs().max():.3f}")
+                logger.warning("This suggests the diffusion model is generating unrealistic embeddings")
+            
             # Step 6: Decode to SMILES
             logger.info("Step 6: Decoding embeddings to SMILES...")
             
@@ -466,6 +488,56 @@ class LigandGenerator:
             
             # Step 7: Process and validate results
             logger.info("Step 7: Processing and validating results...")
+            
+            # Add statistics about decoded SMILES
+            valid_smiles_count = 0
+            organic_smiles_count = 0
+            drug_like_count = 0
+            
+            for i, smiles in enumerate(decoded_smiles):
+                try:
+                    # Basic SMILES validation
+                    mol = Chem.MolFromSmiles(smiles)
+                    if mol is not None:
+                        valid_smiles_count += 1
+                        
+                        # Check if organic (contains C, N, O, S, P, F, Cl, Br, I)
+                        organic_elements = {'C', 'N', 'O', 'S', 'P', 'F', 'Cl', 'Br', 'I', 'H'}
+                        mol_elements = set([atom.GetSymbol() for atom in mol.GetAtoms()])
+                        if mol_elements.issubset(organic_elements):
+                            organic_smiles_count += 1
+                            
+                            # Basic drug-likeness checks (Lipinski's rule of 5)
+                            mw = Descriptors.MolWt(mol)
+                            logp = Descriptors.MolLogP(mol)
+                            hbd = Descriptors.NumHDonors(mol)
+                            hba = Descriptors.NumHAcceptors(mol)
+                            
+                            if mw <= 500 and logp <= 5 and hbd <= 5 and hba <= 10:
+                                drug_like_count += 1
+                    
+                    # Log problematic SMILES for debugging
+                    if mol is None or not mol_elements.issubset(organic_elements):
+                        logger.debug(f"❌ Problematic SMILES {i}: {smiles}")
+                        if mol is not None:
+                            problematic_elements = mol_elements - organic_elements
+                            logger.debug(f"   Contains non-organic elements: {problematic_elements}")
+                        
+                except Exception as e:
+                    logger.debug(f"❌ Error processing SMILES {i} ({smiles}): {e}")
+                    
+            logger.info(f"📊 SMILES Quality Statistics:")
+            logger.info(f"   Valid SMILES: {valid_smiles_count}/{len(decoded_smiles)} ({valid_smiles_count/len(decoded_smiles)*100:.1f}%)")
+            logger.info(f"   Organic molecules: {organic_smiles_count}/{len(decoded_smiles)} ({organic_smiles_count/len(decoded_smiles)*100:.1f}%)")
+            logger.info(f"   Drug-like molecules: {drug_like_count}/{len(decoded_smiles)} ({drug_like_count/len(decoded_smiles)*100:.1f}%)")
+            
+            if valid_smiles_count == 0:
+                logger.error("🚨 CRITICAL: No valid SMILES generated! This indicates a serious issue with the diffusion model or smi-TED decoding.")
+            elif organic_smiles_count == 0:
+                logger.error("🚨 CRITICAL: No organic molecules generated! The model is generating inorganic/metallic compounds.")
+            elif drug_like_count == 0:
+                logger.warning("⚠️  WARNING: No drug-like molecules generated! Generated molecules may not be suitable for drug discovery.")
+                
             for i, smiles in enumerate(decoded_smiles):
                 try:
                     ligand_data = {
