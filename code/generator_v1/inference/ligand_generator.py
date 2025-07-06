@@ -412,17 +412,19 @@ class LigandGenerator:
             
             # Step 6: Decode to SMILES
             logger.info("Step 6: Decoding embeddings to SMILES...")
+            
+            # Convert generated embeddings to CPU first
+            if isinstance(generated_embeddings, torch.Tensor):
+                generated_embeddings_cpu = generated_embeddings.cpu()
+            else:
+                generated_embeddings_cpu = torch.from_numpy(generated_embeddings)
+            
             if self.smi_ted is None:
                 # Fallback: generate dummy SMILES for testing
                 logger.warning("smi-TED not available, generating dummy SMILES for testing")
                 dummy_smiles = ["CCO", "CC(=O)O", "CC(C)C", "C1=CC=CC=C1", "CC(C)(C)O"]
                 decoded_smiles = dummy_smiles[:num_samples]
             else:
-                if isinstance(generated_embeddings, torch.Tensor):
-                    generated_embeddings_cpu = generated_embeddings.cpu()
-                else:
-                    generated_embeddings_cpu = torch.from_numpy(generated_embeddings)
-                    
                 try:
                     decoded_smiles = self.smi_ted.decode(generated_embeddings_cpu)
                 except Exception as e:
