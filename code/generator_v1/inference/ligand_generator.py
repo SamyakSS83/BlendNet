@@ -115,18 +115,33 @@ class LigandGenerator:
         try:
             # Load smi-TED
             if load_smi_ted is not None:
-                # Use the inference directory which contains the checkpoint
+                # Use the correct smi_ted_light directory which contains both vocab and checkpoint
                 smi_ted_path = '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light'
-                self.smi_ted = load_smi_ted(
-                    folder=smi_ted_path,
-                    ckpt_filename="smi-ted-Light_40.pt"
-                )
-                logger.info("✅ smi-TED loaded successfully")
+                
+                # Debug: Check if files exist
+                vocab_file = os.path.join(smi_ted_path, "bert_vocab_curated.txt")
+                ckpt_file = os.path.join(smi_ted_path, "smi-ted-Light_40.pt")
+                
+                logger.info(f"Checking smi-TED files:")
+                logger.info(f"  Vocab file exists: {os.path.exists(vocab_file)} - {vocab_file}")
+                logger.info(f"  Checkpoint file exists: {os.path.exists(ckpt_file)} - {ckpt_file}")
+                
+                if not os.path.exists(vocab_file) or not os.path.exists(ckpt_file):
+                    logger.warning("Required smi-TED files not found")
+                    self.smi_ted = None
+                else:
+                    self.smi_ted = load_smi_ted(
+                        folder=smi_ted_path,
+                        ckpt_filename="smi-ted-Light_40.pt",
+                        vocab_filename="bert_vocab_curated.txt"
+                    )
+                    logger.info("✅ smi-TED loaded successfully")
             else:
                 logger.warning("smi-TED load function not available")
                 self.smi_ted = None
         except Exception as e:
             logger.warning(f"Failed to load smi-TED: {e}")
+            logger.warning(f"Exception type: {type(e).__name__}")
             self.smi_ted = None
             
         try:
