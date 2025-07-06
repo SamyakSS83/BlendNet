@@ -31,15 +31,25 @@ except ImportError as e:
 
 # Import SMILES validator
 try:
+    # Add the correct path for utils module
+    sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
     from utils.smiles_validator import SMILESValidator
+    logging.info("✅ SMILES validator imported successfully")
 except ImportError as e:
     logging.warning(f"SMILES validator import error: {e}")
     SMILESValidator = None
 
 # Import smi-TED with correct path
 try:
-    sys.path.append(os.path.join(os.path.dirname(__file__), '../../materials.smi-ted/smi-ted/inference/'))
-    from smi_ted_light.load import load_smi_ted
+    # Add the correct path for smi-TED
+    smi_ted_path = os.path.join(os.path.dirname(__file__), '../../materials.smi-ted/smi-ted/inference/smi_ted_light/')
+    if os.path.exists(smi_ted_path):
+        sys.path.append(smi_ted_path)
+        from load import load_smi_ted
+        logging.info("✅ smi-TED imported successfully")
+    else:
+        logging.warning(f"smi-TED path not found: {smi_ted_path}")
+        load_smi_ted = None
 except ImportError as e:
     logging.warning(f"smi-TED import error: {e}")
     load_smi_ted = None
@@ -105,9 +115,8 @@ class LigandGenerator:
         try:
             # Load smi-TED
             if load_smi_ted is not None:
-                # CORRECTED: Use root materials.smi-ted directory, not subdirectory
-                # The checkpoint file is in the root directory
-                smi_ted_path = '/home/sarvesh/scratch/GS/samyak/.Blendnet/materials.smi-ted'
+                # Use the inference directory which contains the checkpoint
+                smi_ted_path = '/home/threesamyak/sura/plm_sura/BlendNet/materials.smi-ted/smi-ted/inference/smi_ted_light'
                 self.smi_ted = load_smi_ted(
                     folder=smi_ted_path,
                     ckpt_filename="smi-ted-Light_40.pt"
