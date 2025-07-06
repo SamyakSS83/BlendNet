@@ -21,7 +21,7 @@ import random
 
 # Add parent directories to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../materials.smi-ted/smi-ted/'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../../materials.smi-ted/smi-ted/'))
 
 try:
     from models.diffusion_model import ProteinLigandDiffusion
