@@ -42,7 +42,7 @@ except ImportError as e:
 # Import smi-TED with correct path
 try:
     # Add the correct path for smi-TED
-    smi_ted_path = os.path.join(os.path.dirname(__file__), '../../materials.smi-ted/smi-ted/inference/smi_ted_light/')
+    smi_ted_path = os.path.join(os.path.dirname(__file__), '../../../materials.smi-ted/smi-ted/inference/smi_ted_light/')
     if os.path.exists(smi_ted_path):
         sys.path.append(smi_ted_path)
         from load import load_smi_ted
