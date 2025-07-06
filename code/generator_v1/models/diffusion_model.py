@@ -9,33 +9,41 @@ from typing import Tuple, Optional
 
 
 class DiffusionScheduler:
-    """Noise scheduler for diffusion process."""
+    """Noise scheduler for diffusion process optimized for chemical embeddings."""
     
     def __init__(self, 
                  num_timesteps: int = 1000,
                  beta_start: float = 0.0001,
                  beta_end: float = 0.02,
-                 schedule: str = "linear"):
+                 schedule: str = "cosine",
+                 embedding_scale: float = 5.0):
         """
         Initialize noise scheduler.
         
         Args:
             num_timesteps: Number of diffusion timesteps
-            beta_start: Starting noise level
-            beta_end: Ending noise level
+            beta_start: Starting noise level (scaled down for embeddings)
+            beta_end: Ending noise level (scaled down for embeddings)
             schedule: Noise schedule ('linear', 'cosine')
+            embedding_scale: Expected scale of embeddings (smi-TED: ~[-5, 5])
         """
         self.num_timesteps = num_timesteps
+        self.embedding_scale = embedding_scale
+        
+        # Scale betas for embedding space (smi-TED embeddings are typically [-5, 5])
+        beta_start = beta_start * (embedding_scale / 10.0)  # Scale down
+        beta_end = beta_end * (embedding_scale / 10.0)
         
         if schedule == "linear":
             self.betas = torch.linspace(beta_start, beta_end, num_timesteps)
         elif schedule == "cosine":
-            # Cosine schedule (often better for generation)
+            # Cosine schedule (better for molecular generation)
             steps = torch.arange(num_timesteps + 1, dtype=torch.float32) / num_timesteps
             alphas_cumprod = torch.cos((steps + 0.008) / 1.008 * torch.pi / 2) ** 2
             alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
             betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-            self.betas = torch.clamp(betas, 0.0001, 0.9999)
+            # Clamp and scale for chemical embeddings
+            self.betas = torch.clamp(betas * (embedding_scale / 10.0), 0.00001, 0.02)
         else:
             raise ValueError(f"Unknown schedule: {schedule}")
             
@@ -51,11 +59,16 @@ class DiffusionScheduler:
         self.posterior_variance = (
             self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
         )
+        # Clamp variance to prevent explosion
+        self.posterior_variance = torch.clamp(self.posterior_variance, min=1e-6)
         
     def q_sample(self, x_start: torch.Tensor, t: torch.Tensor, noise: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """Sample from q(x_t | x_0) - forward diffusion."""
+        """Sample from q(x_t | x_0) - forward diffusion with chemical constraints."""
         if noise is None:
             noise = torch.randn_like(x_start)
+            
+        # Scale noise to reasonable range for chemical embeddings
+        noise = torch.clamp(noise, -2.0, 2.0)
         
         # Ensure all tensors are on the same device
         device = x_start.device
@@ -64,10 +77,15 @@ class DiffusionScheduler:
         sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod.to(device)[t].reshape(-1, 1)
         sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod.to(device)[t].reshape(-1, 1)
         
-        return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
+        result = sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
+        
+        # Clamp to reasonable embedding space
+        result = torch.clamp(result, -self.embedding_scale, self.embedding_scale)
+        
+        return result
         
     def predict_start_from_noise(self, x_t: torch.Tensor, t: torch.Tensor, noise: torch.Tensor) -> torch.Tensor:
-        """Predict x_0 from x_t and predicted noise."""
+        """Predict x_0 from x_t and predicted noise with stability constraints."""
         # Ensure all tensors are on the same device
         device = x_t.device
         t = t.to(device)
@@ -75,7 +93,18 @@ class DiffusionScheduler:
         sqrt_alphas_cumprod_t = self.sqrt_alphas_cumprod.to(device)[t].reshape(-1, 1)
         sqrt_one_minus_alphas_cumprod_t = self.sqrt_one_minus_alphas_cumprod.to(device)[t].reshape(-1, 1)
         
-        return (x_t - sqrt_one_minus_alphas_cumprod_t * noise) / sqrt_alphas_cumprod_t
+        # Clamp noise prediction to prevent explosion
+        noise = torch.clamp(noise, -5.0, 5.0)
+        
+        # Prevent division by very small numbers
+        sqrt_alphas_cumprod_t = torch.clamp(sqrt_alphas_cumprod_t, min=1e-4)
+        
+        result = (x_t - sqrt_one_minus_alphas_cumprod_t * noise) / sqrt_alphas_cumprod_t
+        
+        # Clamp result to chemical embedding space
+        result = torch.clamp(result, -self.embedding_scale, self.embedding_scale)
+        
+        return result
         
     def q_posterior(self, x_start: torch.Tensor, x_t: torch.Tensor, t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Compute posterior mean and variance."""
@@ -157,13 +186,20 @@ class ProteinConditionedUNet(nn.Module):
             SelfAttentionBlock(hidden_dim, dropout) for _ in range(num_layers // 2)
         ])
         
-        # Output projection
+        # Output projection with controlled scaling
         self.output_proj = nn.Sequential(
             nn.LayerNorm(hidden_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, compound_dim)
+            nn.Linear(hidden_dim, compound_dim),
+            nn.Tanh()  # Constrain output to [-1, 1] then scale
         )
+        
+        # Scale factor for chemical embeddings (smi-TED range ~[-5, 5])
+        self.output_scale = 3.0
+        
+        # Initialize weights with smaller values for stability
+        self._initialize_weights()
         
     def forward(self, 
                 x: torch.Tensor, 
@@ -196,8 +232,22 @@ class ProteinConditionedUNet(nn.Module):
         # Output projection
         noise_pred = self.output_proj(h)
         
+        # Scale output to chemical embedding range
+        noise_pred = noise_pred * self.output_scale
+        
         return noise_pred
 
+    def _initialize_weights(self):
+        """Initialize weights with smaller values for stability."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, mean=0.0, std=0.02)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.LayerNorm):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
+        
 
 class CrossAttentionBlock(nn.Module):
     """Cross-attention block for protein conditioning."""
@@ -305,6 +355,7 @@ class ProteinLigandDiffusion(nn.Module):
                  protbert_dim: int = 1024, 
                  pseq2sites_dim: int = 256,
                  num_timesteps: int = 1000,
+                 embedding_scale: float = 5.0,
                  **model_kwargs):
         """
         Initialize complete diffusion model.
@@ -314,11 +365,15 @@ class ProteinLigandDiffusion(nn.Module):
             protbert_dim: Dimension of ProtBERT embeddings
             pseq2sites_dim: Dimension of Pseq2Sites embeddings
             num_timesteps: Number of diffusion timesteps
+            embedding_scale: Scale of chemical embeddings
             **model_kwargs: Arguments for U-Net model
         """
         super().__init__()
         
-        self.scheduler = DiffusionScheduler(num_timesteps=num_timesteps)
+        self.scheduler = DiffusionScheduler(
+            num_timesteps=num_timesteps,
+            embedding_scale=embedding_scale
+        )
         self.model = ProteinConditionedUNet(
             compound_dim=compound_dim,
             protbert_dim=protbert_dim,
@@ -327,6 +382,7 @@ class ProteinLigandDiffusion(nn.Module):
         )
         
         self.compound_dim = compound_dim
+        self.embedding_scale = embedding_scale
         
     @property
     def num_timesteps(self):
@@ -371,14 +427,14 @@ class ProteinLigandDiffusion(nn.Module):
                guidance_scale: float = 1.0,
                num_inference_steps: Optional[int] = None) -> torch.Tensor:
         """
-        Sample new compounds given protein condition.
+        Sample new compounds given protein condition with improved stability.
         
         Args:
             protein_condition: Protein embeddings [batch_size, protbert_dim + pseq2sites_dim]
             initial_compound: Initial compound embedding [batch_size, compound_dim] (optional)
             num_samples: Number of samples to generate
             guidance_scale: Guidance scale for conditioning (default: 1.0, no guidance)
-            num_inference_steps: Number of denoising steps (default: uses scheduler default)
+            num_inference_steps: Number of denoising steps (default: 50 for faster inference)
             
         Returns:
             Generated compound embeddings [batch_size * num_samples, compound_dim]
@@ -386,12 +442,9 @@ class ProteinLigandDiffusion(nn.Module):
         batch_size = protein_condition.shape[0]
         device = protein_condition.device
         
-        # Use specified inference steps or scheduler default
+        # Use fewer inference steps for stability (50 instead of 1000)
         if num_inference_steps is None:
-            num_inference_steps = self.scheduler.num_timesteps
-        else:
-            # Adjust the timestep range if custom inference steps
-            num_inference_steps = min(num_inference_steps, self.scheduler.num_timesteps)
+            num_inference_steps = 50
         
         # Repeat protein condition for multiple samples
         protein_condition = protein_condition.repeat_interleave(num_samples, dim=0)
@@ -399,50 +452,67 @@ class ProteinLigandDiffusion(nn.Module):
         # Initialize with noise or given initial compound
         if initial_compound is not None:
             x = initial_compound.repeat_interleave(num_samples, dim=0)
-            # Add some noise to initial compound
-            noise = torch.randn_like(x) * 0.1
+            # Add small amount of noise to initial compound for variation
+            noise = torch.randn_like(x) * 0.05  # Reduced noise level
             x = x + noise
+            # Clamp to reasonable range
+            x = torch.clamp(x, -self.embedding_scale, self.embedding_scale)
         else:
+            # Start from pure noise scaled to embedding range
             x = torch.randn(batch_size * num_samples, self.compound_dim, device=device)
+            x = x * (self.embedding_scale / 3.0)  # Scale down initial noise
             
-        # Reverse diffusion with custom inference steps
-        step_size = self.scheduler.num_timesteps // num_inference_steps
-        timesteps = list(range(0, self.scheduler.num_timesteps, step_size))[:num_inference_steps]
+        # Create evenly spaced timesteps for inference
+        timesteps = torch.linspace(
+            self.scheduler.num_timesteps - 1, 0, num_inference_steps, 
+            dtype=torch.long, device=device
+        )
         
-        for t_idx in reversed(timesteps):
+        # Reverse diffusion with improved stability
+        for i, t_idx in enumerate(timesteps):
             t = torch.full((batch_size * num_samples,), t_idx, device=device, dtype=torch.long)
             
-            # Predict noise
-            predicted_noise = self.model(x, t, protein_condition)
+            # Predict noise with gradient scaling
+            with torch.cuda.amp.autocast(enabled=False):  # Disable autocast for stability
+                predicted_noise = self.model(x, t, protein_condition)
+                
+                # Clamp predicted noise to prevent explosion
+                predicted_noise = torch.clamp(predicted_noise, -5.0, 5.0)
+                
+                # Apply guidance if specified (simplified)
+                if guidance_scale != 1.0 and guidance_scale > 0:
+                    # Scale the noise prediction for guidance
+                    predicted_noise = predicted_noise * guidance_scale
+                    predicted_noise = torch.clamp(predicted_noise, -5.0, 5.0)
             
-            # Apply guidance if specified
-            if guidance_scale != 1.0:
-                # Simple guidance: amplify the conditioning effect
-                uncond_noise = self.model(x, t, torch.zeros_like(protein_condition))
-                predicted_noise = uncond_noise + guidance_scale * (predicted_noise - uncond_noise)
+            # Get scheduler parameters for this timestep
+            alpha_t = self.scheduler.alphas[t_idx].to(device)
+            alpha_cumprod_t = self.scheduler.alphas_cumprod[t_idx].to(device)
+            beta_t = self.scheduler.betas[t_idx].to(device)
             
-            # Compute previous sample
-            alpha_t = self.scheduler.alphas[t_idx]
-            alpha_cumprod_t = self.scheduler.alphas_cumprod[t_idx]
-            alpha_cumprod_prev = self.scheduler.alphas_cumprod_prev[t_idx]
-            beta_t = self.scheduler.betas[t_idx]
-            
-            # Compute predicted x_0
+            # Compute predicted x_0 (with clamping)
             pred_x0 = self.scheduler.predict_start_from_noise(x, t, predicted_noise)
             
-            # Compute posterior mean
-            posterior_mean = (
-                beta_t * torch.sqrt(alpha_cumprod_prev) / (1 - alpha_cumprod_t) * pred_x0 +
-                alpha_t * torch.sqrt(1 - alpha_cumprod_prev) / (1 - alpha_cumprod_t) * x
-            )
-            
-            if t_idx > 0:
-                # Add noise for non-final step
-                posterior_variance = self.scheduler.posterior_variance[t_idx]
-                noise = torch.randn_like(x)
-                x = posterior_mean + torch.sqrt(posterior_variance) * noise
+            if i < len(timesteps) - 1:  # Not the final step
+                # Get next timestep
+                t_next = timesteps[i + 1]
+                alpha_cumprod_next = self.scheduler.alphas_cumprod[t_next].to(device)
+                
+                # Compute posterior mean using DDIM-style update for stability
+                # x_{t-1} = sqrt(alpha_{t-1}) * pred_x0 + sqrt(1 - alpha_{t-1}) * predicted_noise
+                sqrt_alpha_next = torch.sqrt(alpha_cumprod_next)
+                sqrt_one_minus_alpha_next = torch.sqrt(1 - alpha_cumprod_next)
+                
+                x = sqrt_alpha_next * pred_x0 + sqrt_one_minus_alpha_next * predicted_noise
+                
+                # Clamp to prevent drift outside embedding space
+                x = torch.clamp(x, -self.embedding_scale, self.embedding_scale)
             else:
-                x = posterior_mean
+                # Final step - return the predicted clean sample
+                x = pred_x0
+                
+        # Final clamp to ensure outputs are in valid range
+        x = torch.clamp(x, -self.embedding_scale, self.embedding_scale)
                 
         return x
     
