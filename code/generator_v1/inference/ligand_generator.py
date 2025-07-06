@@ -400,7 +400,14 @@ class LigandGenerator:
             similar_sequences, similar_protein_data = self.retrieve_similar_proteins(
                 protbert_emb, pseq2sites_emb, k=k_similar
             )
-            
+
+            # Debug: Print top-k similar proteins and their ligands
+            logger.info("Top similar proteins and their ligands:")
+            for idx, seq in enumerate(similar_sequences):
+                ligands = similar_protein_data[idx].get('ligands', [])
+                ligand_smiles = [lig.get('smiles', '') for lig in ligands]
+                logger.info(f"  {idx+1}. Sequence: {seq} -> Ligands: {ligand_smiles}")
+
             # Step 3: Select initialization ligand
             logger.info("Step 3: Selecting initialization ligand...")
             init_smiles = self.select_initialization_ligand(similar_protein_data)
